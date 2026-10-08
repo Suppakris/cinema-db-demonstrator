@@ -1,4 +1,6 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This project demonstrates the live MySQL schema, relationships, records, and transaction behavior through a cinema booking case study. The database is the main subject.
+
+See [DEMO_GUIDE.md](DEMO_GUIDE.md) for setup, a three-minute lecturer walkthrough, and an endpoint map.
 
 ## Getting Started
 

@@ -1,32 +1,134 @@
 # Handoff
 
+## System goal
+
+Demonstrate the cinema database through the web interface. Prioritize schema structure, relationships, real MySQL rows, SQL operations and results, transaction flow, and before/after database state. The booking flow is a case study for those concepts, not a commercial ticketing product.
+
 ## Current phase
 
-Core movie-to-booking flow implemented; not yet linted, built, or visually checked.
+Phase 8 — Final implementation verification completed. Live MySQL, schema DDL, record APIs, booking state, rollback consistency, activity responses, lint, and production build all passed. Rendered browser visual review remains pending because no browser was available in this session.
 
 ## Completed
 
-- Replaced the starter page with a responsive cinema catalog, screening picker, seat map, contact/payment form, confirmation, SQL trace, and before/after summary.
-- Added live MySQL read APIs for movies, upcoming showtimes, seats, and payment methods; added a transactional booking API with seat uniqueness checks and idempotency.
-- Added one approved future screening in the configured MySQL database: showtime **8**, Oppenheimer, Theater 1, Friday 2026-10-09 at 15:00–18:00. It uses existing seat and weekday price rows.
+- The home page leads with a live schema explorer backed by `GET /api/schema`. It displays the database name, table/view totals, table row total, all object counts, column types/null/defaults, PK/FK/UQ markers, and navigable foreign-key relationships.
+- The live movie section shows the SQL read query and returned movie and upcoming-showtime counts. The booking flow continues to show SQL writes, affected rows, and before/after seat state after a committed transaction.
+- The mobile seat map has 44px touch targets, horizontal scrolling for wider rows, selected-seat count, and clearer screen-reader labels.
+- The booking API passes TypeScript checks after `validText` was marked as a type guard.
+- Added future screenings in live MySQL, all with available seats and matching configured prices:
+  - **8** Oppenheimer — Theater 1, 2026-10-09 15:00–18:00
+  - **9** Dune: Part Two — Krungsri IMAX, 2026-10-09 19:15–22:01
+  - **10** How to Make Millions Before Grandma Dies — Theater 1, 2026-10-12 15:00–17:05
+  - **11** Spider-Man: Across the Spider-Verse — Theater 1, 2026-10-13 15:00–17:20
+  - **12** Godzilla Minus One — Theater 1, 2026-10-15 15:00–17:05
+  - **13** The Medium — Theater 1, 2026-10-16 15:00–17:10
+  - **14** Top Gun: Maverick — Theater 1, 2026-10-19 15:00–17:11
+  - Times are Asia/Bangkok. Six additions use weekday afternoon price slot 1; Dune is scheduled in the IMAX room.
+- GitHub `master` was fetched and fast-forwarded to `6a1f6d0`; it adds `Final_Sp222.sql`.
 
 ## Relevant files
 
 - `src/app/page.tsx`, `src/app/globals.css`, `src/app/layout.tsx`
 - `src/app/api/movies/route.ts`
+- `src/app/api/records/[tableName]/route.ts`
+- `src/app/api/bookings/route.ts`
+- `src/app/api/transactions/rollback-demo/route.ts`
 - `src/app/api/showtimes/route.ts`
 - `src/app/api/showtimes/[showtimeId]/seats/route.ts`
 - `src/app/api/bookings/route.ts`
 - `src/lib/db.ts` (existing MySQL pool)
+- `Final_Sp222.sql` (schema script in the GitHub repository)
 
 ## Decisions and constraints
 
-- MySQL is the source of truth. The configured live schema was inspected; no `.sql` file is in the repo.
+- The web interface reads and writes the configured live MySQL database.
 - There is no `showtime_seat` table. A `ticket` row marks a seat booked for a showtime; the unique `(Showtime_ID, Seat_ID)` key prevents duplicate sales.
 - Payment is simulated and recorded as `SUCCESS`; no gateway is called. Booking submission writes customer, booking, ticket, and payment rows to live MySQL.
-- The seeded available showtimes were from March 2026. Only Oppenheimer currently has an upcoming screening; the other catalog titles show no upcoming screenings.
-- Do not create a booking as part of validation; it would write persistent customer and transaction records.
+- Do not create bookings during validation; that writes persistent customer and transaction records.
 
-## Exact next step
+## Phase 1 — Database integration audit
 
-Run `pnpm lint` and `pnpm build`, fix any reported issues, then visually inspect the flow. Do not submit the booking form during checks.
+- Compared `Final_Sp222.sql` with live `information_schema`: exact match of **31 tables and 4 views**; no missing or extra tables/views. The SQL header's “27 Physical Relational Tables” count is incorrect.
+- Verified core PK/FK/unique constraints against live metadata, including `Ticket`'s unique `(Showtime_ID, Seat_ID)` and its composite relationships to booking, seat, and showtime.
+- Live row counts: movie 7, branch 7, theater 7, seat 7, showtime 14, booking 8, ticket 8, payment 8. Seven showtimes are upcoming; seven configured seats are in the two Paragon theaters.
+- Traced all requested entities from UI through route handler SQL to MySQL (see Phase 1 report in the conversation). Branch and theater are exposed through showtime joins; booking, ticket, and payment have no standalone read endpoints.
+- No product code changed in Phase 1. No booking was submitted.
+
+## Phase 2 — Schema Explorer checkpoint
+
+- Added read-only `GET /api/schema`, which queries the active database's `information_schema` and counts records in each discovered table and view.
+- Replaced the curated static entity path with a selectable live object browser and column/key/relationship inspector. It displays no fabricated schema entities or row records.
+- Runtime endpoint verification returned database `cinema_db`, **31 base tables**, **4 views**, **35 total objects**, and **228 table rows** across the tables. All objects returned columns; the movie PK was `Movie_ID`; showtime FK columns included `Movie_ID` and `Theater_ID`; 37 FK relationships were returned.
+- Endpoint row counts matched the Phase 1 live counts for movie (7), branch (7), theater (7), seat (7), showtime (14), booking (8), ticket (8), and payment (8). No booking was created.
+- `pnpm lint` and `pnpm build` pass. The build lists `/api/schema` as a dynamic route. No browser visual review was available.
+
+## Phase 3 — Live Data Explorer checkpoint
+
+- Added read-only `GET /api/records/[tableName]` with stable PK ordering, exact filtered row totals, pagination capped at 50 rows, and validated parameterized relationship filters. It rejects views/unknown objects and invalid filter columns.
+- Added a live row browser for base tables, row inspection, selected-row field details, and foreign-key navigation in both directions. Composite foreign-key values are passed together to the related query. No demo records are hardcoded.
+- Runtime API checks returned live counts matching the schema endpoint for movie (7), branch (7), theater (7), seat (7), showtime (14), booking (8), ticket (8), and payment (8). The movie endpoint returned 7 actual rows/columns and a stable `Movie_ID` primary key; showtime filtering by the selected movie returned its 2 matching rows. A composite ticket filter on `Showtime_ID` and `Seat_ID` returned the matching ticket. Invalid filter columns returned 400; an unknown table returned 404.
+- A temporary uniquely named movie was inserted, observed through the records API (1 matching row), deleted, and confirmed absent through the same API (0 matching rows). The probe script and row were removed; no booking was created.
+- `pnpm lint`, `pnpm build`, and `git diff --check` pass. No browser surface was available for visual interaction review.
+
+## Phase 4 — Database operation demonstration checkpoint
+
+- The booking API now reads `customer`, `booking`, `ticket`, and `payment` table counts and selected seat/ticket state before inserts. It reads the resulting counts, seat status, created ticket rows, and payment row inside the transaction before committing, then returns those snapshots with affected table names.
+- The confirmation panel now shows the transaction path, actual before/after row counts and seat/ticket IDs, affected tables, and parameterized SQL statements with affected-row counts.
+- One authorized end-to-end demo booking was committed: Dune: Part Two, Showtime 9, Krungsri IMAX at Paragon Cineplex, seat A1 (Seat_ID 5), 2026-10-09 19:15 Asia/Bangkok. The synthetic contact was `Schema Demo`, `phase4-demo-e0d5627e91f74486959f77fe146fef60@example.test`, phone `+66000000000`.
+- **Before:** A1 was available with no ticket; customer 8, booking 8, ticket 8, payment 8.
+- **Operation:** `POST /api/bookings`; transaction inserted customer 9, booking 9, ticket 9, and payment 9, then committed. Payment is the existing simulated `SUCCESS` record; total THB 600. The `Seat` row's physical status remains `AVAILABLE` by design; the seat is considered booked for a showtime because Ticket_ID 9 links Seat_ID 5 to Showtime_ID 9.
+- **After:** customer 9, booking 9, ticket 9, payment 9; seat API reports A1 `BOOKED`. Independent read-only requests returned exactly one row for booking 9, its demo customer, its ticket, and its payment; payment status `SUCCESS`, amount 600.00.
+- No extra booking was submitted. `pnpm lint` and `pnpm build` pass. No browser surface was available to visually inspect the confirmation panel.
+
+## Phase 5 — Transaction / rollback checkpoint
+
+- Added `POST /api/transactions/rollback-demo` and a Transaction Lab control. It inserts a synthetic customer and booking inside a MySQL transaction, deliberately attempts a payment with a nonexistent payment-method FK, catches the FK error, and runs `ROLLBACK`.
+- The UI reports each attempted statement and its outcome, before/after row counts, attempted IDs, rows that remain, and the FK failure. The successful COMMIT path remains visible in the Phase 4 confirmation panel.
+- Runtime verification returned `transaction: ROLLED_BACK`, expected FK failure, and `noPartialRows: true`. Before and after counts both remained customer 9, booking 9, ticket 9, payment 9. Independent reads confirmed attempted customer 10, booking 10, and related ticket/payment rows all returned zero results.
+- The failed transaction consumes MySQL auto-increment values, so gaps may appear; it left no persistent customer, booking, ticket, or payment rows. No additional successful booking was created.
+- `pnpm lint`, `pnpm build`, and `git diff --check` pass. No browser surface was available to visually inspect or click the Transaction Lab.
+
+## Phase 6 — Database activity / SQL visualization checkpoint
+
+- Booking and rollback API responses now include timestamped activity events for the API request, transaction start, SELECT validation/snapshot operations, INSERTs, expected FK failure, and COMMIT/ROLLBACK. Each event carries a safe SQL template, table names, outcome, and row count where applicable; bound values, contact data, and idempotency keys are omitted.
+- Added a shared activity timeline to both transaction result panels. It displays local Bangkok timestamps, API/transaction/SQL steps, table names, statement outcome, and a clear note that parameter values are omitted.
+- Verified commit-side activity with an idempotency replay of existing booking 9: the route returned `replayed: true`, showed API → BEGIN → idempotency SELECT → COMMIT, and did not create a duplicate. Verified rollback-side activity: it showed temporary customer/booking INSERTs → FK failure → ROLLBACK → after-state SELECT; `noPartialRows` remained true.
+- The replay and rollback checks left booking/payment counts at 9. Serialized activity contained no demo email, phone, or idempotency key. A fresh committed booking was not created for this activity check.
+- `pnpm lint`, `pnpm build`, and `git diff --check` pass. No browser surface was available for visual review of the activity timelines.
+
+## Phase 7 — UI refocus checkpoint
+
+- Navigation now names the primary destinations directly: Schema Explorer, Live Records, and Transaction Lab. The schema footer's live-row link now points to the general records explorer.
+- The hero explains the three-minute database-first path and displays the active database name from live schema metadata.
+- The schema and row inspector sections are numbered first. Movie selection is relabeled as a booking case study, with compact database-style rows showing Movie_ID and live showtime counts instead of large poster cards. Booking completion copy describes committed records.
+- Build and lint pass. The computer-use surface inventory contained no browsers, so the visual experience could not be inspected in a rendered browser.
+
+## Phase 8 — Final verification checkpoint
+
+- `/api/health` reports `ok`; `/api/schema` reports `cinema_db`, 31 tables, 4 views, and 35 total objects. Parsed names from `Final_Sp222.sql` match live `information_schema` exactly (0 table or view differences). All objects expose columns; sampled movie PK, ticket UQ, and showtime FKs match the live schema.
+- Read-only row totals from `/api/records` match schema counts for movie 7, branch 7, theater 7, seat 7, showtime 14, booking 9, ticket 9, and payment 9. The 4-row increase from the initial 228 total is the committed Phase 4 customer/booking/ticket/payment.
+- The live showtime/seat API reports demo seat A1 `BOOKED`; booking 9, customer 9, ticket 9, and payment 9 each resolve to one row, with the payment `SUCCESS`.
+- Invalid booking payload returns 400. Idempotent replay returns booking 9 without creating a duplicate; booking and payment totals remain 9. Phase 5 rollback probe IDs remain absent from customer, booking, ticket, and payment.
+- The served home page contains schema, live row, booking case study, and transaction lab sections. `pnpm lint`, `pnpm build`, and `git diff --check` pass.
+- No browser was available for visual interaction review. The compact movie-card artwork is generated decorative styling; movie and booking records displayed by APIs come from MySQL.
+
+## Progress checklist
+
+- [x] Phase 0 — Discovery baseline
+- [x] Phase 1 — Database integration audit
+- [x] Phase 2 — Schema explorer / dashboard
+- [x] Phase 3 — Live data explorer
+- [x] Phase 4 — Database operation demonstration
+- [x] Phase 5 — Transaction / rollback demonstration
+- [x] Phase 6 — Database activity / SQL visualization
+- [x] Phase 7 — UI refocus
+- [x] Phase 8 — Final verification
+
+## Phase 9 — Demo readiness
+
+- Added `DEMO_GUIDE.md` with local setup requirements, a three-minute lecturer walkthrough, live endpoint map, and clear notes about persistent booking writes and the repeatable rollback demonstration.
+- Replaced the starter README opening with a project description and a direct link to the demo guide.
+- Reviewed the guide against the current page, database configuration, and transaction route. `git diff --check` passes. No application code or database state changed in this phase.
+
+## Next step
+
+Implementation checkpoints and the demo guide are complete. If a browser surface becomes available later, inspect the rendered desktop/mobile layout and transaction interactions; functional database verification is complete.

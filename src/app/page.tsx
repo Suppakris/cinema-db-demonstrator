@@ -60,7 +60,67 @@ type Seat = {
 };
 
 type PaymentMethod = { id: number; name: string };
+type SchemaKey = { kind: "PK" | "FK" | "UQ"; name: string };
+type SchemaColumn = {
+  name: string;
+  type: string;
+  nullable: boolean;
+  defaultValue: string | number | null;
+  extra: string;
+  keys: SchemaKey[];
+};
+type SchemaObject = {
+  name: string;
+  type: "BASE TABLE" | "VIEW";
+  recordCount: number;
+  columns: SchemaColumn[];
+};
+type SchemaRelationship = {
+  constraintName: string;
+  fromTable: string;
+  fromColumns: string[];
+  toTable: string;
+  toColumns: string[];
+};
+type SchemaData = {
+  database: string;
+  summary: { objectCount: number; tableCount: number; viewCount: number; tableRecordCount: number };
+  objects: SchemaObject[];
+  relationships: SchemaRelationship[];
+};
+type DatabaseRecord = Record<string, unknown>;
+type RecordsResult = {
+  table: string;
+  total: number;
+  limit: number;
+  offset: number;
+  columns: string[];
+  primaryKey: string[];
+  rows: DatabaseRecord[];
+};
 type SqlStatement = { label: string; sql: string; affectedRows: number };
+type DatabaseActivityEntry = {
+  timestamp: string;
+  kind: string;
+  label: string;
+  tables: string[];
+  sql: string | null;
+  outcome: string;
+  affectedRows: number | null;
+};
+type BookingDatabaseState = {
+  affectedTables: string[];
+  before: {
+    tableCounts: { customer: number; booking: number; ticket: number; payment: number };
+    seats: Array<{ seatId: number; label: string; status: string; ticketId: number | null }>;
+  };
+  after: {
+    tableCounts: { customer: number; booking: number; ticket: number; payment: number };
+    seats: Array<{ seatId: number; label: string; status: string; ticketId: number | null }>;
+    tickets: Array<{ ticketId: number; seatId: number; soldPrice: number }>;
+    payment: { paymentId: number; bookingId: number; paidAmount: number; status: string };
+  };
+};
 type BookingReceipt = {
   id: number;
   paymentId: number;
@@ -68,6 +128,21 @@ type BookingReceipt = {
   total: number;
   ticketIds: number[];
   seats: string[];
+  databaseState?: BookingDatabaseState;
+  transaction?: string;
+  activity?: DatabaseActivityEntry[];
+};
+type RollbackDemoResult = {
+  transaction: string;
+  showtimeId: number;
+  failure: string;
+  before: { customer: number; booking: number; ticket: number; payment: number };
+  after: { customer: number; booking: number; ticket: number; payment: number };
+  attempted: { customerId: number; bookingId: number };
+  persistedDemoRows: { customer: number; booking: number; payment: number };
+  noPartialRows: boolean;
+  statements: Array<{ label: string; sql: string; outcome: string; affectedRows: number }>;
+  activity: DatabaseActivityEntry[];
 };
 
 const money = new Intl.NumberFormat("en-US", {
@@ -85,6 +160,24 @@ function formatShowtime(value: string, options: Intl.DateTimeFormatOptions) {
 
 function posterTone(id: number) {
   return `poster-tone-${((id - 1) % 7) + 1}`;
+}
+
+function formatRecordValue(value: unknown) {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function ActivityTimeline({ events }: { events: DatabaseActivityEntry[] }) {
+  return <div className="activity-view" aria-label="Database activity timeline">
+    <div className="activity-view-heading"><strong>DATABASE ACTIVITY</strong><span>SAFE SQL · PARAMETER VALUES OMITTED</span></div>
+    <div className="activity-event-list">{events.map((event, index) => <article className="activity-event" key={`${event.timestamp}-${event.kind}-${index}`}>
+      <time dateTime={event.timestamp}>{new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(event.timestamp))}</time>
+      <span className={`activity-kind activity-kind-${event.kind.toLowerCase()}`}>{event.kind}</span>
+      <div className="activity-event-main"><strong>{event.label}</strong><small>{event.tables.length ? `TABLES · ${event.tables.join(", ")}` : "APPLICATION / TRANSACTION"}</small>{event.sql && <code>{event.sql}</code>}</div>
+      <span className={`activity-outcome activity-outcome-${event.outcome.toLowerCase().replace(/[^a-z]+/g, "-")}`}>{event.outcome}{event.affectedRows !== null ? ` · ${event.affectedRows} ROW${event.affectedRows === 1 ? "" : "S"}` : ""}</span>
+    </article>)}</div>
+  </div>;
 }
 
 function Poster({ movie, large = false }: { movie: Movie; large?: boolean }) {
@@ -141,6 +234,20 @@ export default function Home() {
   const [receipt, setReceipt] = useState<BookingReceipt | null>(null);
   const [statements, setStatements] = useState<SqlStatement[]>([]);
   const [replayed, setReplayed] = useState(false);
+  const [schemaData, setSchemaData] = useState<SchemaData | null>(null);
+  const [loadingSchema, setLoadingSchema] = useState(true);
+  const [schemaError, setSchemaError] = useState("");
+  const [selectedSchemaObject, setSelectedSchemaObject] = useState("movie");
+  const [recordTable, setRecordTable] = useState("movie");
+  const [recordOffset, setRecordOffset] = useState(0);
+  const [recordFilter, setRecordFilter] = useState<Record<string, unknown> | null>(null);
+  const [recordsResult, setRecordsResult] = useState<RecordsResult | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<DatabaseRecord | null>(null);
+  const [recordsLoadKey, setRecordsLoadKey] = useState("");
+  const [recordsError, setRecordsError] = useState("");
+  const [rollbackResult, setRollbackResult] = useState<RollbackDemoResult | null>(null);
+  const [runningRollbackDemo, setRunningRollbackDemo] = useState(false);
+  const [rollbackDemoError, setRollbackDemoError] = useState("");
   const idempotencyKey = useRef("");
 
   const selectedSeats = useMemo(
@@ -148,6 +255,54 @@ export default function Home() {
     [seats, selectedSeatIds],
   );
   const total = selectedSeats.reduce((sum, seat) => sum + Number(seat.price ?? 0), 0);
+  const selectedSchema = schemaData?.objects.find((item) => item.name === selectedSchemaObject) ?? schemaData?.objects[0] ?? null;
+  const recordsRequestKey = JSON.stringify([recordTable, recordOffset, recordFilter]);
+  const loadingRecords = recordsLoadKey !== recordsRequestKey;
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/schema")
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "Could not load database schema.");
+        return result as SchemaData;
+      })
+      .then((result) => {
+        if (!active) return;
+        setSchemaData(result);
+        setSelectedSchemaObject((current) => result.objects.some((item) => item.name === current) ? current : result.objects[0]?.name ?? "");
+      })
+      .catch((cause: unknown) => {
+        if (active) setSchemaError(cause instanceof Error ? cause.message : "Could not load database schema.");
+      })
+      .finally(() => { if (active) setLoadingSchema(false); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const params = new URLSearchParams({ limit: "25", offset: String(recordOffset) });
+    if (recordFilter) params.set("filter", JSON.stringify(recordFilter));
+    fetch(`/api/records/${encodeURIComponent(recordTable)}?${params.toString()}`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "Could not load database records.");
+        return result as RecordsResult;
+      })
+      .then((result) => {
+        if (!active) return;
+        setRecordsError("");
+        setRecordsResult(result);
+        setRecordsLoadKey(recordsRequestKey);
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setRecordsResult(null);
+        setRecordsLoadKey(recordsRequestKey);
+        setRecordsError(cause instanceof Error ? cause.message : "Could not load database records.");
+      });
+    return () => { active = false; };
+  }, [recordTable, recordOffset, recordFilter, recordsRequestKey]);
 
   const loadShowtimes = useCallback(async (movieId: number) => {
     setLoadingShows(true);
@@ -254,7 +409,12 @@ export default function Home() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Booking could not be completed.");
-      setReceipt(result.booking as BookingReceipt);
+      setReceipt({
+        ...(result.booking as BookingReceipt),
+        databaseState: result.databaseState as BookingDatabaseState | undefined,
+        transaction: result.transaction as string | undefined,
+        activity: result.activity as DatabaseActivityEntry[] | undefined,
+      });
       setStatements(result.statements as SqlStatement[]);
       setReplayed(Boolean(result.replayed));
       setStep("confirmed");
@@ -262,6 +422,22 @@ export default function Home() {
       setError(cause instanceof Error ? cause.message : "Booking could not be completed.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function runRollbackDemo() {
+    setRunningRollbackDemo(true);
+    setRollbackDemoError("");
+    setRollbackResult(null);
+    try {
+      const response = await fetch("/api/transactions/rollback-demo", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "The rollback demonstration failed.");
+      setRollbackResult(result as RollbackDemoResult);
+    } catch (cause) {
+      setRollbackDemoError(cause instanceof Error ? cause.message : "The rollback demonstration failed.");
+    } finally {
+      setRunningRollbackDemo(false);
     }
   }
 
@@ -276,6 +452,21 @@ export default function Home() {
   }
 
   const hasFutureShows = movies.some((item) => Number(item.showtimeCount) > 0);
+  const recordRelations = selectedRecord && schemaData ? schemaData.relationships.flatMap((relation) => {
+    if (relation.fromTable === recordTable) return [{
+      relation,
+      direction: "REFERENCES",
+      targetTable: relation.toTable,
+      filter: Object.fromEntries(relation.toColumns.map((column, index) => [column, selectedRecord[relation.fromColumns[index]]])),
+    }];
+    if (relation.toTable === recordTable) return [{
+      relation,
+      direction: "REFERENCED BY",
+      targetTable: relation.fromTable,
+      filter: Object.fromEntries(relation.fromColumns.map((column, index) => [column, selectedRecord[relation.toColumns[index]]])),
+    }];
+    return [];
+  }) : [];
 
   return (
     <main className="cinema-shell">
@@ -285,9 +476,9 @@ export default function Home() {
           <span className="brand-type">cinema<span>/</span>db</span>
         </a>
         <nav className="top-nav" aria-label="Main navigation">
-          <a className="nav-current" href="#movies">The collection</a>
-          <a href="#booking">Booking flow</a>
-          <a href="#data-trail">Data trail</a>
+          <a className="nav-current" href="#data-trail">Schema explorer</a>
+          <a href="#records">Live records</a>
+          <a href="#transactions">Transaction lab</a>
         </nav>
         <div className={`db-status ${databaseStatus === "offline" ? "db-offline" : ""}`}><span className="status-dot" /><span>{databaseStatus === "checking" ? "CHECKING MYSQL" : databaseStatus === "online" ? "MYSQL CONNECTED" : "MYSQL OFFLINE"}</span><span className="status-separator">·</span><span>LIVE DATA</span></div>
       </header>
@@ -296,10 +487,10 @@ export default function Home() {
         <div className="hero-grid" />
         <div className="hero-copy">
           <div className="eyebrow"><span className="eyebrow-line" /> DATABASE DEMONSTRATOR <span className="eyebrow-muted">/ 01</span></div>
-          <h1>Every seat has<br /><em>a story.</em></h1>
-          <p className="hero-description">Choose a film. Find your seat. Follow every change all the way into the database.</p>
-          <a className="hero-link" href="#movies">Explore the collection <ArrowDownRight size={15} /></a>
-          <div className="hero-caption"><span>LIVE CONNECTION</span><span className="caption-divider" /> mysql / cinema_db</div>
+          <h1>The schema.<br /><em>In practice.</em></h1>
+          <p className="hero-description">A three-minute tour of the live schema, its records, and the database changes behind a cinema booking.</p>
+          <a className="hero-link" href="#data-trail">Open the live schema explorer <ArrowDownRight size={15} /></a>
+          <div className="hero-caption"><span>LIVE CONNECTION</span><span className="caption-divider" /> mysql / {schemaData?.database ?? "connecting"}</div>
         </div>
         <div className="hero-visual" aria-hidden="true">
           <div className="hero-ring hero-ring-outer" />
@@ -312,17 +503,79 @@ export default function Home() {
           <span className="orbit-point point-one" /><span className="orbit-point point-two" />
           <div className="hero-visual-note"><span className="note-line" /> A SMALL FLOW, A REAL DATABASE</div>
         </div>
-        <div className="hero-bottom"><span>01—04 / SELECT · SEAT · CONFIRM · TRACE</span><span>SCROLL TO BEGIN <ChevronDown size={14} /></span></div>
+        <div className="hero-bottom"><span>3-MINUTE PATH: SCHEMA → ROWS → COMMIT / ROLLBACK</span><span>DATABASE FIRST <ChevronDown size={14} /></span></div>
+      </section>
+
+      <section className="data-section schema-section" id="data-trail">
+        <div className="data-section-inner">
+          <div className="data-section-head"><div><div className="eyebrow"><span className="eyebrow-line" /> 01 / SCHEMA EXPLORER</div><h2>Tables connected<br /><em>by keys.</em></h2></div><p>Start with the actual MySQL objects. Select a table to inspect its columns, primary and foreign keys, relationships, and live row count.</p></div>
+          {loadingSchema ? <div className="schema-state"><LoadingMark /> Reading MySQL schema metadata…</div> : schemaError ? <div className="schema-state schema-state-error"><CircleHelp size={16} /> {schemaError}</div> : schemaData && <>
+            <div className="schema-dashboard" aria-label="Database summary">
+              <div><span>DATABASE</span><strong>{schemaData.database}</strong></div>
+              <div><span>BASE TABLES</span><strong>{schemaData.summary.tableCount}</strong></div>
+              <div><span>VIEWS</span><strong>{schemaData.summary.viewCount}</strong></div>
+              <div><span>ROWS IN TABLES</span><strong>{schemaData.summary.tableRecordCount.toLocaleString()}</strong></div>
+            </div>
+            <div className="schema-explorer">
+              <aside className="schema-object-browser" aria-label="Database objects">
+                <div className="schema-browser-head"><strong>DATABASE OBJECTS</strong><span>{schemaData.summary.objectCount}</span></div>
+                <div className="schema-object-list">
+                  {schemaData.objects.map((item) => <button key={item.name} className={`schema-object-button ${selectedSchema?.name === item.name ? "schema-object-selected" : ""}`} onClick={() => setSelectedSchemaObject(item.name)} aria-pressed={selectedSchema?.name === item.name}>
+                    <span className="schema-object-name"><b>{item.name}</b><small>{item.type === "VIEW" ? "VIEW" : "TABLE"}</small></span><span className="schema-object-count">{item.recordCount.toLocaleString()} rows</span>
+                  </button>)}
+                </div>
+              </aside>
+              {selectedSchema && <div className="schema-inspector">
+                <div className="schema-inspector-head"><div><span>{selectedSchema.type === "VIEW" ? "DATABASE VIEW" : "BASE TABLE"}</span><h3>{selectedSchema.name}</h3></div><strong>{selectedSchema.recordCount.toLocaleString()} <small>ROWS</small></strong></div>
+                <div className="schema-column-table-wrap"><table className="schema-column-table"><thead><tr><th>Column</th><th>Type</th><th>Null</th><th>Default</th><th>Keys</th></tr></thead><tbody>{selectedSchema.columns.map((column) => <tr key={column.name}><td><strong>{column.name}</strong>{column.extra && <small>{column.extra}</small>}</td><td><code>{column.type}</code></td><td>{column.nullable ? "YES" : "NO"}</td><td>{column.defaultValue === null ? "—" : String(column.defaultValue)}</td><td><span className="schema-key-list">{column.keys.length ? column.keys.map((key) => <span className={`schema-key-badge schema-key-${key.kind.toLowerCase()}`} key={`${column.name}-${key.name}`} title={key.name}>{key.kind}</span>) : "—"}</span></td></tr>)}</tbody></table></div>
+                <div className="schema-relations"><div className="schema-relations-title">FOREIGN KEY RELATIONSHIPS <span>{schemaData.relationships.filter((relation) => relation.fromTable === selectedSchema.name || relation.toTable === selectedSchema.name).length}</span></div>
+                  {schemaData.relationships.filter((relation) => relation.fromTable === selectedSchema.name || relation.toTable === selectedSchema.name).length === 0 ? <p className="schema-no-relations">No foreign key relationships recorded for this object.</p> : schemaData.relationships.filter((relation) => relation.fromTable === selectedSchema.name || relation.toTable === selectedSchema.name).map((relation) => <div className="schema-relation-row" key={`${relation.fromTable}-${relation.constraintName}`}><button onClick={() => setSelectedSchemaObject(relation.fromTable)}>{relation.fromTable}</button><span>{relation.fromColumns.join(", ")} <ArrowRight size={12} /> {relation.toColumns.join(", ")}</span><button onClick={() => setSelectedSchemaObject(relation.toTable)}>{relation.toTable}</button><small>{relation.constraintName}</small></div>)}
+                </div>
+              </div>}
+            </div>
+          </>}
+          <div className="data-section-foot"><span><span className="status-dot" /> {schemaData ? `MYSQL / ${schemaData.summary.objectCount} OBJECTS LOADED` : "PK = PRIMARY KEY · FK = FOREIGN KEY · UQ = UNIQUE"}</span><span>PK = PRIMARY KEY · FK = FOREIGN KEY · UQ = UNIQUE</span><a href="#records">INSPECT LIVE ROWS <ArrowDownRight size={13} /></a></div>
+        </div>
+      </section>
+
+      <section className="records-section section-wrap" id="records">
+        <div className="section-heading records-section-heading">
+          <div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> 02 / LIVE ROW INSPECTOR</div><h2>Read the rows.<br /><em>Follow the keys.</em></h2></div>
+          <p className="section-intro">Select a database table, inspect actual rows, then follow a foreign key to the matching records on the other side.</p>
+          <div className="collection-count"><span>{recordsResult?.total.toLocaleString() ?? "—"}</span><small>ROWS<br />IN FILTER</small></div>
+        </div>
+        <div className="records-explorer">
+          <div className="records-toolbar"><label htmlFor="records-table-select">DATABASE TABLE</label><select id="records-table-select" value={recordTable} onChange={(event) => { setRecordTable(event.target.value); setRecordOffset(0); setRecordFilter(null); setSelectedRecord(null); }}>{schemaData?.objects.filter((item) => item.type === "BASE TABLE").map((item) => <option value={item.name} key={item.name}>{item.name} · {item.recordCount.toLocaleString()} rows</option>)}</select><span>{recordFilter ? "RELATED ROWS" : "LIVE SELECT"} / MYSQL</span></div>
+          {recordsError && <div className="records-message records-message-error"><CircleHelp size={15} /> {recordsError}</div>}
+          {loadingRecords ? <div className="records-message"><LoadingMark /> Loading rows from {recordTable}…</div> : recordsResult && <>
+            <div className="records-query"><code>SELECT * FROM `{recordsResult.table}`{recordFilter ? " WHERE related key values match" : ""} ORDER BY {recordsResult.primaryKey.length ? recordsResult.primaryKey.map((column) => `\`${column}\``).join(", ") : "database row order"} LIMIT {recordsResult.limit} OFFSET {recordsResult.offset};</code><span>{recordsResult.total.toLocaleString()} matching rows</span></div>
+            {recordsResult.rows.length === 0 ? <div className="records-message">No rows match this relationship in the current database.</div> : <>
+              <div className="records-grid-wrap"><table className="records-grid"><thead><tr><th>Inspect</th>{recordsResult.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{recordsResult.rows.map((row, index) => {
+                const rowKey = recordsResult.primaryKey.map((column) => formatRecordValue(row[column])).join("/") || String(recordsResult.offset + index);
+                return <tr key={rowKey} className={selectedRecord === row ? "records-row-selected" : ""}><td><button className="record-inspect-button" onClick={() => setSelectedRecord(row)} aria-label={`Inspect row ${rowKey}`}>{selectedRecord === row ? "SELECTED" : "INSPECT"}</button></td>{recordsResult.columns.map((column) => <td key={column} title={formatRecordValue(row[column])}>{formatRecordValue(row[column])}</td>)}</tr>;
+              })}</tbody></table></div>
+              <div className="records-pagination"><span>ROWS {recordsResult.total === 0 ? 0 : recordsResult.offset + 1}–{Math.min(recordsResult.offset + recordsResult.rows.length, recordsResult.total)} OF {recordsResult.total}</span><div><button disabled={recordsResult.offset === 0 || loadingRecords} onClick={() => { setRecordOffset(Math.max(0, recordOffset - recordsResult.limit)); setSelectedRecord(null); }}>PREVIOUS</button><button disabled={recordsResult.offset + recordsResult.limit >= recordsResult.total || loadingRecords} onClick={() => { setRecordOffset(recordOffset + recordsResult.limit); setSelectedRecord(null); }}>NEXT</button></div></div>
+              {selectedRecord && <div className="record-detail">
+                <div className="record-detail-heading"><div><span>SELECTED ROW / {recordTable.toUpperCase()}</span><h3>{recordsResult.primaryKey.map((column) => `${column}: ${formatRecordValue(selectedRecord[column])}`).join(" · ") || "Row details"}</h3></div><button onClick={() => setSelectedRecord(null)} aria-label="Close row details"><X size={15} /></button></div>
+                <dl className="record-fields">{recordsResult.columns.map((column) => <div key={column}><dt>{column}</dt><dd>{formatRecordValue(selectedRecord[column])}</dd></div>)}</dl>
+                <div className="record-links-heading">RELATED RECORDS <span>FROM LIVE FOREIGN KEYS</span></div>
+                {recordRelations.length === 0 ? <p className="record-no-links">No foreign key relationships connect this row.</p> : <div className="record-link-list">{recordRelations.map(({ relation, direction, targetTable, filter }) => <button key={`${relation.constraintName}-${direction}`} className="record-link" onClick={() => { setRecordTable(targetTable); setRecordFilter(filter); setRecordOffset(0); setSelectedRecord(null); }}><span>{direction}</span><strong>{targetTable}</strong><small>{relation.constraintName}</small><ArrowRight size={15} /></button>)}</div>}
+              </div>}
+            </>}
+          </>}
+        </div>
       </section>
 
       <section className="collection section-wrap" id="movies">
         <div className="section-heading">
-          <div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> THE COLLECTION</div><h2>A good place<br />to <em>begin.</em></h2></div>
-          <p className="section-intro">A small selection from the live cinema database. Each title leads to its showtimes, theater, seats and prices.</p>
-          <div className="collection-count"><span>{String(movies.length).padStart(2, "0")}</span><small>FILMS<br />IN DATABASE</small></div>
+          <div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> 03 / BOOKING CASE STUDY</div><h2>One workflow.<br /><em>Four tables.</em></h2></div>
+          <p className="section-intro">Booking is the case study. Choose a real movie and showtime to trace writes across customer, booking, ticket, and payment.</p>
+          <div className="collection-count"><span>{String(movies.length).padStart(2, "0")}</span><small>MOVIE ROWS<br />IN DATABASE</small></div>
         </div>
 
         {error && step !== "confirmed" && <div className="error-banner"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
+
+        {!loadingMovies && movies.length > 0 && <div className="read-query"><div className="read-query-heading"><span><Database size={14} /> LIVE SELECT / MYSQL RESULT</span><b>{movies.length} MOVIE ROWS · {movies.reduce((count, item) => count + Number(item.showtimeCount), 0)} FUTURE SHOWTIMES</b></div><code>SELECT m.Movie_ID AS id, m.Title AS title, m.Poster_Image AS posterImage, m.Movie_Synopsis AS synopsis,<br />m.Movie_Duration AS duration, m.Original_Release_Date AS releaseDate, m.Age_Rating AS ageRating,<br />COUNT(DISTINCT s.Showtime_ID) AS showtimeCount FROM movie m LEFT JOIN showtime s<br />ON s.Movie_ID = m.Movie_ID AND s.Showtime_Status = &apos;AVAILABLE&apos; AND s.Start_Time &gt; NOW()<br />GROUP BY m.Movie_ID ORDER BY m.Movie_ID;</code></div>}
 
         <div className="movie-grid" aria-busy={loadingMovies}>
           {loadingMovies ? (
@@ -338,7 +591,7 @@ export default function Home() {
                 aria-pressed={active}
               >
                 <div className="movie-card-poster"><Poster movie={item} /><span className="poster-card-index">FILM — {String(item.id).padStart(2, "0")}</span>{count > 0 && <span className="poster-showtime-badge"><span /> {count} SHOWTIME{count === 1 ? "" : "S"}</span>}</div>
-                <div className="movie-card-info"><span className="movie-rating">{item.ageRating || "NR"}</span><h3>{item.title}</h3><div className="movie-meta"><span>{item.duration} MIN</span><span className="meta-dot">·</span><span>{count > 0 ? "NOW SHOWING" : "NO FUTURE SHOWS"}</span></div></div>
+                <div className="movie-card-info"><small className="movie-db-id">MOVIE_ID / {item.id}</small><span className="movie-rating">{item.ageRating || "NR"}</span><h3>{item.title}</h3><div className="movie-meta"><span>{item.duration} MIN</span><span className="meta-dot">·</span><span>{count > 0 ? `${count} LIVE SHOW${count === 1 ? "" : "S"}` : "NO FUTURE SHOWS"}</span></div></div>
                 <span className="movie-card-arrow"><ArrowRight size={15} /></span>
               </button>
             );
@@ -346,7 +599,7 @@ export default function Home() {
         </div>
 
         <div className="selection-panel" id="booking">
-          <div className="selection-topline"><span><span className="selection-dot" /> YOUR SCREENING</span><span>DATABASE RECORD / SHOWTIME</span></div>
+          <div className="selection-topline"><span><span className="selection-dot" /> BOOKING WORKFLOW</span><span>CASE STUDY / SHOWTIME → SEAT → TRANSACTION</span></div>
           <div className="selection-title-row"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> {movie?.title ?? "CHOOSE A FILM"}</div><h2>{showtime ? "Choose your seats." : "Find your showtime."}</h2></div><div className="flow-steps"><StepLabel number="01" label="FILM" active={step === "discover"} complete={Boolean(showtime)} /><span className="flow-connector" /><StepLabel number="02" label="SEATS" active={step === "seats"} complete={step === "details" || step === "confirmed"} /><span className="flow-connector" /><StepLabel number="03" label="DETAILS" active={step === "details"} complete={step === "confirmed"} /><span className="flow-connector" /><StepLabel number="04" label="DONE" active={step === "confirmed"} complete={step === "confirmed"} /></div></div>
 
           {!movie && <div className="empty-state">Choose a film from the collection to see screenings.</div>}
@@ -375,19 +628,22 @@ export default function Home() {
               {loadingSeats ? <div className="inline-loading"><LoadingMark /> Loading live seat map…</div> : (
                 <div className="seat-and-summary">
                   <div className="seat-area">
+                    <div className="seat-map-guide"><span>Tap to choose · up to 4 seats</span><strong aria-live="polite">{selectedSeatIds.length} / 4 SELECTED</strong></div>
                     <div className="screen-label"><span /> SCREEN <span /></div>
                     <div className="screen-curve" />
-                    <div className="seat-map" aria-label="Seat selection">
-                      {[...new Set(seats.map((seat) => seat.seatRow))].map((rowName) => {
-                        const rowSeats = seats.filter((seat) => seat.seatRow === rowName);
-                        return <div className="seat-row" key={rowName}><span className="row-label">{rowName}</span>{rowSeats.map((seat) => {
-                          const selected = selectedSeatIds.includes(seat.id);
-                          const unavailable = seat.status !== "AVAILABLE" || seat.physicalStatus !== "AVAILABLE" || seat.priceId === null;
-                          return <button key={seat.id} className={`seat ${selected ? "seat-selected" : ""} ${unavailable ? "seat-unavailable" : ""} ${seat.seatTypeId !== 1 ? "seat-premium" : ""}`} disabled={unavailable} onClick={() => toggleSeat(seat)} aria-label={`${seat.seatRow}${seat.seatColumn}, ${seat.seatTypeName}, ${seat.priceId === null ? "price unavailable" : money.format(Number(seat.price))}`} title={`${seat.seatTypeName}${seat.priceId === null ? " · price unavailable" : ` · ${money.format(Number(seat.price))}`}`}>
-                            {selected ? <Check size={13} /> : String(seat.seatColumn).padStart(2, "0")}
-                          </button>;
-                        })}</div>;
-                      })}
+                    <div className="seat-map-viewport">
+                      <div className="seat-map" role="group" aria-label="Seat selection">
+                        {[...new Set(seats.map((seat) => seat.seatRow))].map((rowName) => {
+                          const rowSeats = seats.filter((seat) => seat.seatRow === rowName);
+                          return <div className="seat-row" key={rowName}><span className="row-label">{rowName}</span>{rowSeats.map((seat) => {
+                            const selected = selectedSeatIds.includes(seat.id);
+                            const unavailable = seat.status !== "AVAILABLE" || seat.physicalStatus !== "AVAILABLE" || seat.priceId === null;
+                            return <button key={seat.id} className={`seat ${selected ? "seat-selected" : ""} ${unavailable ? "seat-unavailable" : ""} ${seat.seatTypeId !== 1 ? "seat-premium" : ""}`} disabled={unavailable} onClick={() => toggleSeat(seat)} aria-pressed={selected} aria-label={`${seat.seatRow}${seat.seatColumn}, ${seat.seatTypeName}, ${unavailable ? "unavailable" : selected ? "selected" : "available"}, ${seat.priceId === null ? "price unavailable" : money.format(Number(seat.price))}`} title={`${seat.seatTypeName}${seat.priceId === null ? " · price unavailable" : ` · ${money.format(Number(seat.price))}`}`}>
+                              {selected ? <Check size={13} /> : String(seat.seatColumn).padStart(2, "0")}
+                            </button>;
+                          })}</div>;
+                        })}
+                      </div>
                     </div>
                     <div className="seat-legend"><span><i className="legend-available" /> AVAILABLE</span><span><i className="legend-selected" /> SELECTED</span><span><i className="legend-booked" /> BOOKED</span></div>
                   </div>
@@ -424,25 +680,29 @@ export default function Home() {
           {receipt && step === "confirmed" && (
             <div className="confirmation-panel">
               <div className="confirmation-mark"><Check size={22} /></div>
-              <div className="confirmation-copy"><span>TRANSACTION COMMITTED {replayed ? "· REPLAYED SAFELY" : "· LIVE MYSQL"}</span><h3>Your seats are <em>yours.</em></h3><p>Booking #{String(receipt.id).padStart(6, "0")} · {receipt.seats.join(", ")} · {money.format(receipt.total)}</p></div>
+              <div className="confirmation-copy"><span>TRANSACTION COMMITTED {replayed ? "· REPLAYED SAFELY" : "· LIVE MYSQL"}</span><h3>The records are <em>committed.</em></h3><p>Booking #{String(receipt.id).padStart(6, "0")} · {receipt.seats.join(", ")} · {money.format(receipt.total)}</p></div>
               <button className="secondary-button" onClick={startAgain}><RotateCcw size={14} /> Start another booking</button>
               <div className="transaction-stats"><div><small>BOOKING</small><b>#{receipt.id}</b></div><div><small>TICKETS</small><b>{receipt.ticketIds.length}</b></div><div><small>PAYMENT</small><b>#{receipt.paymentId}</b></div><div><small>TOTAL</small><b>{money.format(receipt.total)}</b></div></div>
-              <div className="sql-trace"><div className="sql-trace-heading"><div><span>THE DATA TRAIL</span><small>ONE ACTION · {statements.reduce((sum, row) => sum + row.affectedRows, 0)} ROWS AFFECTED</small></div><Database size={17} /></div><div className="trace-flow"><span>YOU</span><ArrowRight size={12} /><span>API</span><ArrowRight size={12} /><span>TRANSACTION</span><ArrowRight size={12} /><span>MYSQL</span><Check size={13} /></div>
-                {replayed ? <div className="replay-note"><RotateCcw size={13} /> An earlier request with this key already committed. No second booking was created.</div> : <div className="before-after"><div><span>BEFORE</span><strong>{receipt.seats.join(", ")}</strong><small>AVAILABLE · NO TICKET ROW</small></div><ArrowRight size={16} /><div><span>AFTER · BOOKING #{receipt.id}</span><strong>{receipt.seats.join(", ")}</strong><small>BOOKED · {receipt.ticketIds.length} TICKET ROW{receipt.ticketIds.length === 1 ? "" : "S"} + PAYMENT</small></div></div>}
-                {statements.map((statement, index) => <div className="sql-row" key={`${statement.label}-${index}`}><div className="sql-row-meta"><span className="sql-step">0{index + 1}</span><b>{statement.label}</b><small>{statement.affectedRows} row{statement.affectedRows === 1 ? "" : "s"}</small></div><code>{statement.sql}</code></div>)}
+              <div className="sql-trace"><div className="sql-trace-heading"><div><span>THE DATA TRAIL</span><small>{receipt.transaction ?? (replayed ? "IDEMPOTENT REPLAY" : "COMMITTED")} · {statements.reduce((sum, row) => sum + row.affectedRows, 0)} ROWS AFFECTED</small></div><Database size={17} /></div><div className="trace-flow"><span>USER ACTION</span><ArrowRight size={12} /><span>POST /API/BOOKINGS</span><ArrowRight size={12} /><span>BEGIN</span><ArrowRight size={12} /><span>MYSQL</span><ArrowRight size={12} /><span>COMMIT</span><Check size={13} /></div>
+                {replayed ? <div className="replay-note"><RotateCcw size={13} /> An earlier request with this key already committed. No second booking was created.</div> : receipt.databaseState && <div className="before-after"><div><span>BEFORE · LIVE MYSQL STATE</span><strong>{receipt.databaseState.before.seats.map((seat) => `${seat.label} · ${seat.status}`).join(", ")}</strong><div className="database-row-counts">{Object.entries(receipt.databaseState.before.tableCounts).map(([table, count]) => <span key={table}>{table} <b>{count}</b></span>)}</div><small>Seat availability derived from ticket rows for showtime #{receipt.showtimeId}</small></div><ArrowRight size={16} /><div><span>AFTER · CONFIRMED MYSQL STATE</span><strong>{receipt.databaseState.after.seats.map((seat) => `${seat.label} · ${seat.status} · ticket #${seat.ticketId ?? "—"}`).join(", ")}</strong><div className="database-row-counts">{Object.entries(receipt.databaseState.after.tableCounts).map(([table, count]) => <span key={table}>{table} <b>{count}</b></span>)}</div><small>Booking #{receipt.id} · {receipt.databaseState.after.tickets.length} ticket row{receipt.databaseState.after.tickets.length === 1 ? "" : "s"} · payment #{receipt.databaseState.after.payment.paymentId} {receipt.databaseState.after.payment.status}</small></div></div>}
+                {!replayed && receipt.databaseState && <div className="affected-tables"><span>TABLES AFFECTED</span>{receipt.databaseState.affectedTables.map((table) => <b key={table}>{table}</b>)}</div>}
+                {receipt.activity?.length ? <ActivityTimeline events={receipt.activity} /> : statements.map((statement, index) => <div className="sql-row" key={`${statement.label}-${index}`}><div className="sql-row-meta"><span className="sql-step">0{index + 1}</span><b>{statement.label}</b><small>{statement.affectedRows} row{statement.affectedRows === 1 ? "" : "s"}</small></div><code>{statement.sql}</code></div>)}
               </div>
             </div>
           )}
         </div>
-        <div className="collection-footnote"><span>DATABASE FIRST, ALWAYS.</span><span>THE SEAT YOU PICK BECOMES A ROW YOU CAN TRACE.</span><span>SCROLL TO EXPLORE <ChevronDown size={13} /></span></div>
-      </section>
-
-      <section className="data-section" id="data-trail">
-        <div className="data-section-inner">
-          <div className="data-section-head"><div><div className="eyebrow"><span className="eyebrow-line" /> UNDER THE SURFACE</div><h2>Not just a seat.<br /><em>A relationship.</em></h2></div><p>The booking is only the beginning. Follow the records it touches: a customer, a booking, a ticket and a payment — held together by keys and a single transaction.</p></div>
-          <div className="relationship-flow"><div className="relationship-node"><span>01 / ENTITY</span><strong>customer</strong><small>Customer_ID · PK</small></div><span className="relationship-arrow"><span>1 : N</span><ArrowRight size={17} /></span><div className="relationship-node node-lit"><span>02 / ENTITY</span><strong>booking</strong><small>Booking_ID · PK</small></div><span className="relationship-arrow"><span>1 : N</span><ArrowRight size={17} /></span><div className="relationship-node"><span>03 / ENTITY</span><strong>ticket</strong><small>Seat_ID · unique per show</small></div><span className="relationship-arrow"><span>1 : 1</span><ArrowRight size={17} /></span><div className="relationship-node"><span>04 / ENTITY</span><strong>payment</strong><small>Idempotency_Key · unique</small></div></div>
-          <div className="data-section-foot"><span><span className="status-dot" /> MYSQL / LIVE</span><span>FOREIGN KEYS KEEP THE STORY INTACT.</span><span>END OF FLOW <ArrowRight size={13} /></span></div>
+        <div className="rollback-demo-panel" id="transactions">
+          <div className="rollback-demo-copy"><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> 04 / TRANSACTION LAB</div><h3>See a rollback.<br /><em>Keep the data consistent.</em></h3><p>This controlled run inserts a temporary customer and booking, then deliberately violates the payment method foreign key. MySQL rolls back the transaction; no demo records should remain.</p></div>
+          <div className="rollback-demo-action"><span>BEGIN → INSERT CUSTOMER → INSERT BOOKING → PAYMENT FK FAIL → ROLLBACK</span><button className="secondary-button" onClick={() => void runRollbackDemo()} disabled={runningRollbackDemo}><RotateCcw size={14} /> {runningRollbackDemo ? "Running rollback…" : "Run rollback demonstration"}</button></div>
+          {rollbackDemoError && <div className="rollback-demo-error" role="alert"><CircleHelp size={15} /> {rollbackDemoError}</div>}
+          {rollbackResult && <div className="rollback-result" aria-live="polite">
+            <div className={`rollback-result-status ${rollbackResult.noPartialRows ? "rollback-verified" : "rollback-unverified"}`}><span>{rollbackResult.noPartialRows ? <Check size={14} /> : <CircleHelp size={14} />}</span><div><strong>{rollbackResult.noPartialRows ? "ROLLBACK VERIFIED" : "CHECK DATABASE STATE"}</strong><small>{rollbackResult.failure}</small></div><b>{rollbackResult.transaction}</b></div>
+            <div className="rollback-count-grid">{(["customer", "booking", "ticket", "payment"] as const).map((table) => <div key={table}><span>{table}</span><strong>{rollbackResult.before[table]} <ArrowRight size={11} /> {rollbackResult.after[table]}</strong></div>)}</div>
+            <div className="rollback-attempt-summary"><span>ATTEMPTED IDs (NOT PERSISTED)</span><b>customer #{rollbackResult.attempted.customerId} · booking #{rollbackResult.attempted.bookingId}</b><small>Persisted demo rows: customer {rollbackResult.persistedDemoRows.customer}, booking {rollbackResult.persistedDemoRows.booking}, payment {rollbackResult.persistedDemoRows.payment}. Auto-increment values may advance during a rollback.</small></div>
+            <ActivityTimeline events={rollbackResult.activity} />
+          </div>}
         </div>
+        <div className="collection-footnote"><span>DATABASE FIRST, ALWAYS.</span><span>BOOKING IS THE CASE STUDY; THE ROWS AND RELATIONSHIPS ARE THE SUBJECT.</span><span>SCROLL TO EXPLORE <ChevronDown size={13} /></span></div>
       </section>
 
       <footer className="footer"><a className="brand-lockup" href="#top"><span className="brand-mark"><Clapperboard size={16} /></span><span className="brand-type">cinema<span>/</span>db</span></a><span>BUILT TO MAKE THE DATABASE VISIBLE.</span><a href="#top">BACK TO TOP <ArrowRight className="back-top-icon" size={12} /></a></footer>
