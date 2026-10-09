@@ -30,20 +30,29 @@ export function WorkspaceFrame({ page, children }: { page: WorkspacePage; childr
   }, []);
 
   return (
-    <div className="cinema-shell">
+    <div className={`cinema-shell ${page === "booking" ? "cinema-shell-home" : ""}`}>
       <header className="topbar">
         <Link className="brand-lockup" href="/" aria-label="Cinema database home">
           <span className="brand-mark"><Clapperboard size={18} /></span>
           <span className="brand-type">cinema<span>/</span>db</span>
         </Link>
-        <div className="header-context"><span>DATABASE FIELDNOTES</span><span>MYSQL / CINEMA BOOKING SYSTEM</span></div>
-        <nav className="top-nav" aria-label="Main navigation">
-          {navigation.map(({ id, label, href, icon: Icon }) => (
-            <Link key={id} className="top-nav-link" href={href} aria-current={page === id ? "page" : undefined}>
-              <Icon size={15} /><span>{label}</span>
-            </Link>
-          ))}
-        </nav>
+        {page === "booking" ? <>
+          <div className="header-context"><span>YOUR CINEMA</span><span>FILMS · SHOWTIMES · SEATS</span></div>
+          <nav className="top-nav" aria-label="Main navigation">
+            <Link className="top-nav-link" href="/#movies"><Clapperboard size={15} /><span>Now Showing</span></Link>
+            <Link className="top-nav-link" href="/schema"><GitBranch size={15} /><span>Schema</span></Link>
+            <Link className="top-nav-link" href="/database"><Rows3 size={15} /><span>Database Explorer</span></Link>
+          </nav>
+        </> : <>
+          <div className="header-context"><span>DATABASE FIELDNOTES</span><span>MYSQL / CINEMA BOOKING SYSTEM</span></div>
+          <nav className="top-nav" aria-label="Main navigation">
+            {navigation.map(({ id, label, href, icon: Icon }) => (
+              <Link key={id} className="top-nav-link" href={href} aria-current={page === id ? "page" : undefined}>
+                <Icon size={15} /><span>{label}</span>
+              </Link>
+            ))}
+          </nav>
+        </>}
         <div className={`db-status ${connection === "offline" ? "db-offline" : ""}`} role="status" aria-live="polite">
           <span className="status-dot" />
           <span>{connection === "connected" ? "MYSQL CONNECTED" : connection === "checking" ? "CHECKING MYSQL" : "MYSQL OFFLINE"}</span>

@@ -10,8 +10,6 @@ import {
   Clapperboard,
   Clock3,
   Database,
-  Film,
-  GitBranch,
   LoaderCircle,
   MapPin,
   RotateCcw,
@@ -47,6 +45,8 @@ type Movie = {
   duration: number;
   releaseDate: string;
   ageRating: string;
+  genres: string | null;
+  credits: string | null;
   showtimeCount: number;
   reviewCount: number;
   normalizedReviewCount: number;
@@ -82,45 +82,6 @@ type Seat = {
 };
 
 type PaymentMethod = { id: number; name: string };
-type SchemaKey = { kind: "PK" | "FK" | "UQ"; name: string };
-type SchemaColumn = {
-  name: string;
-  type: string;
-  nullable: boolean;
-  defaultValue: string | number | null;
-  extra: string;
-  keys: SchemaKey[];
-};
-type SchemaObject = {
-  name: string;
-  type: "BASE TABLE" | "VIEW";
-  recordCount: number;
-  columns: SchemaColumn[];
-};
-type SchemaRelationship = {
-  constraintName: string;
-  fromTable: string;
-  fromColumns: string[];
-  toTable: string;
-  toColumns: string[];
-};
-type SchemaData = {
-  database: string;
-  summary: { objectCount: number; tableCount: number; viewCount: number; tableRecordCount: number };
-  objects: SchemaObject[];
-  relationships: SchemaRelationship[];
-};
-type DatabaseRecord = Record<string, unknown>;
-type RecordsResult = {
-  table: string;
-  total: number;
-  limit: number;
-  offset: number;
-  columns: string[];
-  redactedColumns?: string[];
-  primaryKey: string[];
-  rows: DatabaseRecord[];
-};
 type SqlStatement = { label: string; sql: string; affectedRows: number };
 type DatabaseActivityEntry = {
   timestamp: string;
@@ -181,25 +142,10 @@ function formatShowtime(value: string, options: Intl.DateTimeFormatOptions) {
   }).format(new Date(`${value}+07:00`));
 }
 
-function posterTone(id: number) {
-  return `poster-tone-${((id - 1) % 7) + 1}`;
-}
-
-function formatRecordValue(value: unknown) {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-
 function formatRawScore(review: MovieReview) {
   if (review.scoreType.toUpperCase() === "PERCENT") return `${review.rawScore}%`;
   const max = review.scoreMax ? Number(review.scoreMax).toString() : null;
   return max ? `${review.rawScore}/${max}` : review.rawScore;
-}
-
-function formatScore100(score: string | null) {
-  if (score === null) return null;
-  return `${Number(score).toFixed(2).replace(/\.?0+$/, "")}/100`;
 }
 
 function ActivityTimeline({ events }: { events: DatabaseActivityEntry[] }) {
@@ -215,12 +161,10 @@ function ActivityTimeline({ events }: { events: DatabaseActivityEntry[] }) {
 }
 
 function Poster({ movie, large = false }: { movie: Movie; large?: boolean }) {
+  const [imageFailed, setImageFailed] = useState(false);
   return (
-    <div className={`poster-art ${posterTone(movie.id)} ${large ? "poster-art-large" : ""}`}>
-      {movie.posterImage && <Image className="poster-image" src={movie.posterImage} alt="" fill sizes="(max-width: 700px) 54px, 64px" unoptimized />}
-      <span className="poster-index">MOVIE RECORD / {movie.id}</span>
-      <span className="poster-title">{movie.title}</span>
-      <span className="poster-foot">{movie.posterImage ? "DATABASE / POSTER IMAGE" : "POSTER IMAGE NOT PROVIDED"}</span>
+    <div className={`poster-art ${large ? "poster-art-large" : ""}`}>
+      {movie.posterImage && !imageFailed ? <Image className="poster-image" src={movie.posterImage} alt="" fill sizes="(max-width: 700px) 54px, 64px" unoptimized onError={() => setImageFailed(true)} /> : <span className="poster-missing">POSTER<br />UNAVAILABLE</span>}
     </div>
   );
 }
@@ -266,17 +210,6 @@ export default function Home() {
   const [receipt, setReceipt] = useState<BookingReceipt | null>(null);
   const [statements, setStatements] = useState<SqlStatement[]>([]);
   const [replayed, setReplayed] = useState(false);
-  const [schemaData, setSchemaData] = useState<SchemaData | null>(null);
-  const [loadingSchema, setLoadingSchema] = useState(true);
-  const [schemaError, setSchemaError] = useState("");
-  const [selectedSchemaObject, setSelectedSchemaObject] = useState("movie");
-  const [recordTable, setRecordTable] = useState("movie");
-  const [recordOffset, setRecordOffset] = useState(0);
-  const [recordFilter, setRecordFilter] = useState<Record<string, unknown> | null>(null);
-  const [recordsResult, setRecordsResult] = useState<RecordsResult | null>(null);
-  const [selectedRecord, setSelectedRecord] = useState<DatabaseRecord | null>(null);
-  const [recordsLoadKey, setRecordsLoadKey] = useState("");
-  const [recordsError, setRecordsError] = useState("");
   const [rollbackResult, setRollbackResult] = useState<RollbackDemoResult | null>(null);
   const [runningRollbackDemo, setRunningRollbackDemo] = useState(false);
   const [rollbackDemoError, setRollbackDemoError] = useState("");
@@ -288,56 +221,7 @@ export default function Home() {
     [seats, selectedSeatIds],
   );
   const total = selectedSeats.reduce((sum, seat) => sum + Number(seat.price ?? 0), 0);
-  const selectedSchema = schemaData?.objects.find((item) => item.name === selectedSchemaObject) ?? schemaData?.objects[0] ?? null;
-  const recordsRequestKey = JSON.stringify([recordTable, recordOffset, recordFilter]);
-  const loadingRecords = recordsLoadKey !== recordsRequestKey;
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/schema")
-      .then(async (response) => {
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error ?? "Could not load database schema.");
-        return result as SchemaData;
-      })
-      .then((result) => {
-        if (!active) return;
-        setSchemaData(result);
-        setSelectedSchemaObject((current) => result.objects.some((item) => item.name === current) ? current : result.objects[0]?.name ?? "");
-      })
-      .catch((cause: unknown) => {
-        if (active) setSchemaError(cause instanceof Error ? cause.message : "Could not load database schema.");
-      })
-      .finally(() => { if (active) setLoadingSchema(false); });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const params = new URLSearchParams({ limit: "25", offset: String(recordOffset) });
-    if (recordFilter) params.set("filter", JSON.stringify(recordFilter));
-    fetch(`/api/records/${encodeURIComponent(recordTable)}?${params.toString()}`)
-      .then(async (response) => {
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error ?? "Could not load database records.");
-        return result as RecordsResult;
-      })
-      .then((result) => {
-        if (!active) return;
-        setRecordsError("");
-        setRecordsResult(result);
-        setRecordsLoadKey(recordsRequestKey);
-      })
-      .catch((cause: unknown) => {
-        if (!active) return;
-        setRecordsResult(null);
-        setRecordsLoadKey(recordsRequestKey);
-        setRecordsError(cause instanceof Error ? cause.message : "Could not load database records.");
-      });
-    return () => { active = false; };
-  }, [recordTable, recordOffset, recordFilter, recordsRequestKey]);
-
-  const loadShowtimes = useCallback(async (movieId: number) => {
+  const loadShowtimes = useCallback(async (movieId: number): Promise<Showtime[]> => {
     setLoadingShows(true);
     setShowtime(null);
     setSeats([]);
@@ -348,11 +232,45 @@ export default function Home() {
       const response = await fetch(`/api/showtimes?movieId=${movieId}`);
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Could not load showtimes.");
-      setShowtimes(result.showtimes as Showtime[]);
+      const nextShowtimes = result.showtimes as Showtime[];
+      setShowtimes(nextShowtimes);
+      return nextShowtimes;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load showtimes.");
+      return [];
     } finally {
       setLoadingShows(false);
+    }
+  }, []);
+
+  const chooseShowtime = useCallback(async (nextShowtime: Showtime, preferredSeatIds: number[] = []) => {
+    setLoadingSeats(true);
+    setError("");
+    setShowtime(nextShowtime);
+    setSelectedSeatIds([]);
+    setReceipt(null);
+    setStatements([]);
+    try {
+      const response = await fetch(`/api/showtimes/${nextShowtime.id}/seats`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Could not load seats.");
+      const nextSeats = result.seats as Seat[];
+      setSeats(nextSeats);
+      const availablePreferredSeats = nextSeats
+        .filter((seat) => preferredSeatIds.includes(seat.id) && seat.status === "AVAILABLE" && seat.physicalStatus === "AVAILABLE" && seat.priceId !== null)
+        .slice(0, 4);
+      setSelectedSeatIds(availablePreferredSeats.map((seat) => seat.id));
+      if (preferredSeatIds.length > availablePreferredSeats.length) {
+        setError("One or more selected seats are no longer available. Review the updated seat map before continuing.");
+      }
+      setPaymentMethods(result.paymentMethods as PaymentMethod[]);
+      const methods = result.paymentMethods as PaymentMethod[];
+      setPaymentMethodId(methods[0]?.id ?? 1);
+      setStep("seats");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load seats.");
+    } finally {
+      setLoadingSeats(false);
     }
   }, []);
 
@@ -374,9 +292,19 @@ export default function Home() {
       .then((result) => {
         if (!active) return;
         setMovies(result);
-        const firstAvailable = result.find((item) => Number(item.showtimeCount) > 0) ?? result[0] ?? null;
-        setMovie(firstAvailable);
-        if (firstAvailable) void loadShowtimes(firstAvailable.id);
+        const requestedMovieId = Number(new URLSearchParams(window.location.search).get("movieId"));
+        const requestedMovie = result.find((item) => item.id === requestedMovieId) ?? null;
+        setMovie(requestedMovie);
+        if (requestedMovie) {
+          const requestedShowtimeId = Number(new URLSearchParams(window.location.search).get("showtimeId"));
+          const requestedSeatIds = new URLSearchParams(window.location.search).get("seatIds")
+            ?.split(",").map(Number).filter((id) => Number.isInteger(id) && id > 0) ?? [];
+          void loadShowtimes(requestedMovie.id).then(async (availableShowtimes) => {
+            const requestedShowtime = availableShowtimes.find((item) => item.id === requestedShowtimeId);
+            if (requestedShowtime) await chooseShowtime(requestedShowtime, requestedSeatIds);
+            window.setTimeout(() => document.getElementById("booking")?.scrollIntoView({ behavior: "smooth", block: "start" }), requestedShowtime ? 0 : 100);
+          });
+        }
       })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : "Could not connect to the database.");
@@ -385,30 +313,7 @@ export default function Home() {
         if (active) setLoadingMovies(false);
       });
     return () => { active = false; };
-  }, [loadShowtimes]);
-
-  async function chooseShowtime(nextShowtime: Showtime) {
-    setLoadingSeats(true);
-    setError("");
-    setShowtime(nextShowtime);
-    setSelectedSeatIds([]);
-    setReceipt(null);
-    setStatements([]);
-    try {
-      const response = await fetch(`/api/showtimes/${nextShowtime.id}/seats`);
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Could not load seats.");
-      setSeats(result.seats as Seat[]);
-      setPaymentMethods(result.paymentMethods as PaymentMethod[]);
-      const methods = result.paymentMethods as PaymentMethod[];
-      setPaymentMethodId(methods[0]?.id ?? 1);
-      setStep("seats");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load seats.");
-    } finally {
-      setLoadingSeats(false);
-    }
-  }
+  }, [chooseShowtime, loadShowtimes]);
 
   function toggleSeat(seat: Seat) {
     if (seat.status !== "AVAILABLE" || seat.physicalStatus !== "AVAILABLE" || seat.priceId === null) return;
@@ -487,173 +392,43 @@ export default function Home() {
   }
 
   const hasFutureShows = movies.some((item) => Number(item.showtimeCount) > 0);
-  const recordRelations = selectedRecord && schemaData ? schemaData.relationships.flatMap((relation) => {
-    if (relation.fromTable === recordTable) return [{
-      relation,
-      direction: "REFERENCES",
-      targetTable: relation.toTable,
-      filter: Object.fromEntries(relation.toColumns.map((column, index) => [column, selectedRecord[relation.fromColumns[index]]])),
-    }];
-    if (relation.toTable === recordTable) return [{
-      relation,
-      direction: "REFERENCED BY",
-      targetTable: relation.fromTable,
-      filter: Object.fromEntries(relation.fromColumns.map((column, index) => [column, selectedRecord[relation.toColumns[index]]])),
-    }];
-    return [];
-  }) : [];
-
   return (
     <WorkspaceFrame page="booking">
 
-      <section className="hero" id="top">
-        <div className="hero-grid" />
-        <div className="hero-copy">
-          <div className="eyebrow"><span className="eyebrow-line" /> DATABASE DEMONSTRATOR <span className="eyebrow-muted">/ 01</span></div>
-          <h1>The schema.<br /><em>In practice.</em></h1>
-          <p className="hero-description">A three-minute tour of the live schema, its records, and the database changes behind a cinema booking.</p>
-          <a className="hero-link" href="#data-trail">Open the live schema explorer <ArrowDownRight size={15} /></a>
-          <div className="hero-caption"><span>LIVE CONNECTION</span><span className="caption-divider" /> mysql / {schemaData?.database ?? "connecting"}</div>
-        </div>
-        <div className="hero-visual" aria-hidden="true">
-          <div className="hero-ring hero-ring-outer" />
-          <div className="hero-ring hero-ring-inner" />
-          <div className="hero-visual-core"><Film size={28} strokeWidth={1.1} /><span>DATA<br />IN MOTION</span></div>
-          <span className="hero-orbit-label label-top">MOVIE</span>
-          <span className="hero-orbit-label label-right">SHOWTIME</span>
-          <span className="hero-orbit-label label-bottom">SEAT</span>
-          <span className="hero-orbit-label label-left">BOOKING</span>
-          <span className="orbit-point point-one" /><span className="orbit-point point-two" />
-          <div className="hero-visual-note"><span className="note-line" /> A SMALL FLOW, A REAL DATABASE</div>
-        </div>
-        <div className="hero-bottom"><span>3-MINUTE PATH: SCHEMA → ROWS → COMMIT / ROLLBACK</span><span>DATABASE FIRST <ChevronDown size={14} /></span></div>
+      <section className="cinema-hero" id="top">
+        <div className="cinema-hero-image" aria-hidden="true">{movies.find((item) => item.posterImage)?.posterImage ? <Image src={movies.find((item) => item.posterImage)!.posterImage!} alt="" fill sizes="100vw" unoptimized /> : <svg className="cinema-hero-art" viewBox="0 0 1600 800" preserveAspectRatio="xMidYMid slice" role="presentation">
+          <defs><linearGradient id="auditorium" x2="0" y2="1"><stop stopColor="#33483b" /><stop offset="1" stopColor="#111b17" /></linearGradient><linearGradient id="screen" x2="1" y2="1"><stop stopColor="#dfb997" /><stop offset=".55" stopColor="#a76b52" /><stop offset="1" stopColor="#465b51" /></linearGradient><radialGradient id="screenGlow"><stop stopColor="#f4d2a3" stopOpacity=".48" /><stop offset="1" stopColor="#f4d2a3" stopOpacity="0" /></radialGradient></defs>
+          <rect width="1600" height="800" fill="url(#auditorium)" /><ellipse cx="1050" cy="340" rx="700" ry="430" fill="url(#screenGlow)" /><path d="M710 110h670v385H710z" fill="#26362e" stroke="#8c7660" strokeWidth="8" /><path d="M738 138h614v329H738z" fill="url(#screen)" /><path d="M738 390c130-88 214-12 323-99 113-90 184-25 291-126v302H738z" fill="#354940" opacity=".76" /><path d="M738 420c132-62 241-24 353-100 92-63 178-22 261-58v205H738z" fill="#182720" opacity=".82" /><path d="M0 800 330 470h940l330 330z" fill="#101814" /><path d="M0 800 268 540l170 70-72 190zM1600 800l-268-260-170 70 72 190z" fill="#523932" opacity=".78" /><g fill="#0b100e"><path d="M410 800c0-128 61-197 148-197s148 69 148 197zM718 800c0-151 73-232 177-232s177 81 177 232zM1080 800c0-128 61-197 148-197s148 69 148 197z" /></g><g fill="#b0714d" opacity=".7"><circle cx="170" cy="171" r="4"/><circle cx="310" cy="258" r="3"/><circle cx="1430" cy="185" r="4"/><circle cx="1510" cy="327" r="3"/></g>
+        </svg>}</div>
+        <div className="cinema-hero-shade" />
+        <div className="cinema-hero-copy"><div className="eyebrow"><span className="eyebrow-line" /> NOW SHOWING / CINEMA.DB</div><h1>Stories are<br /><em>better here.</em></h1><p>Find your next film, choose your seats, and settle in.</p><a className="cinema-hero-link" href="#movies">Explore movies <ArrowDownRight size={15} /></a></div>
+        <div className="cinema-hero-caption"><span>{databaseStatus === "online" ? "LIVE CINEMA LISTINGS" : databaseStatus === "offline" ? "LISTINGS UNAVAILABLE" : "CONNECTING TO CINEMA"}</span><span>MYSQL → API → MOVIE CARDS</span></div>
       </section>
 
-      <section className="dashboard-brief" aria-label="Cinema domain and live database overview">
-        <div className="journey-story">
-          <div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> THE DOMAIN / A BOOKING IN FIVE STEPS</div>
-          <h2>From a title<br />to a <em>transaction.</em></h2>
-          <p>A cinema visit connects scheduling, inventory, customer, and payment records. Follow the journey, then inspect the keys and rows that support each step.</p>
-          <div className="journey-path" aria-label="Movie to showtime to seat to booking to payment">
-            {["Movie", "Showtime", "Seat", "Booking", "Payment"].map((entity, index) => <div className="journey-node" key={entity}><span>0{index + 1}</span><strong>{entity}</strong>{index < 4 && <ArrowRight size={13} aria-hidden="true" />}</div>)}
-          </div>
-          <div className="journey-caption"><GitBranch size={14} /> Business flow shown for orientation · inspect actual foreign keys in Schema Explorer</div>
-        </div>
-        <aside className="live-overview" aria-label="Live database overview">
-          <div className="live-overview-head"><div><span className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> DATABASE OVERVIEW</span><h3>Current snapshot</h3></div><span className={`live-badge ${databaseStatus === "online" ? "is-live" : ""}`}><i />{databaseStatus === "online" ? "CONNECTED" : databaseStatus === "checking" ? "CHECKING" : "OFFLINE"}</span></div>
-          {databaseStatus === "offline" ? <p className="overview-state">Live figures are unavailable while MySQL is disconnected.</p> : <div className="overview-metrics">
-            <div><span>SCHEMA OBJECTS</span><strong>{schemaData?.summary.objectCount ?? "—"}</strong><small>{schemaData ? `${schemaData.summary.tableCount} tables · ${schemaData.summary.viewCount} views` : loadingSchema ? "Reading schema…" : "Schema unavailable"}</small></div>
-            <div><span>TABLE ROWS</span><strong>{schemaData?.summary.tableRecordCount.toLocaleString() ?? "—"}</strong><small>{schemaData ? `Across ${schemaData.summary.tableCount} base tables` : "Live MySQL count"}</small></div>
-            <div><span>MOVIE RECORDS</span><strong>{loadingMovies ? "—" : movies.length}</strong><small>{loadingMovies ? "Reading movie table…" : error && movies.length === 0 ? "Movie query unavailable" : "Loaded from movie table"}</small></div>
-            <div><span>UPCOMING SHOWTIMES</span><strong>{loadingMovies ? "—" : movies.reduce((count, item) => count + Number(item.showtimeCount), 0)}</strong><small>{loadingMovies ? "Waiting for live query" : "Available future screenings"}</small></div>
-          </div>}
-          <a className="overview-link" href="#data-trail">Inspect live schema <ArrowRight size={14} /></a>
-        </aside>
-      </section>
-
-      <section className="data-section schema-section" id="data-trail">
-        <div className="data-section-inner">
-          <div className="data-section-head"><div><div className="eyebrow"><span className="eyebrow-line" /> 01 / SCHEMA EXPLORER</div><h2>Tables connected<br /><em>by keys.</em></h2></div><p>Start with the actual MySQL objects. Select a table to inspect its columns, primary and foreign keys, relationships, and live row count.</p></div>
-          {loadingSchema ? <div className="schema-state"><LoadingMark /> Reading MySQL schema metadata…</div> : schemaError ? <div className="schema-state schema-state-error"><CircleHelp size={16} /> {schemaError}</div> : schemaData && <>
-            <div className="schema-dashboard" aria-label="Database summary">
-              <div><span>DATABASE</span><strong>{schemaData.database}</strong></div>
-              <div><span>BASE TABLES</span><strong>{schemaData.summary.tableCount}</strong></div>
-              <div><span>VIEWS</span><strong>{schemaData.summary.viewCount}</strong></div>
-              <div><span>ROWS IN TABLES</span><strong>{schemaData.summary.tableRecordCount.toLocaleString()}</strong></div>
-            </div>
-            <div className="schema-explorer">
-              <aside className="schema-object-browser" aria-label="Database objects">
-                <div className="schema-browser-head"><strong>DATABASE OBJECTS</strong><span>{schemaData.summary.objectCount}</span></div>
-                <div className="schema-object-list">
-                  {schemaData.objects.map((item) => <button key={item.name} className={`schema-object-button ${selectedSchema?.name === item.name ? "schema-object-selected" : ""}`} onClick={() => setSelectedSchemaObject(item.name)} aria-pressed={selectedSchema?.name === item.name}>
-                    <span className="schema-object-name"><b>{item.name}</b><small>{item.type === "VIEW" ? "VIEW" : "TABLE"}</small></span><span className="schema-object-count">{item.recordCount.toLocaleString()} rows</span>
-                  </button>)}
-                </div>
-              </aside>
-              {selectedSchema && <div className="schema-inspector">
-                <div className="schema-inspector-head"><div><span>{selectedSchema.type === "VIEW" ? "DATABASE VIEW" : "BASE TABLE"}</span><h3>{selectedSchema.name}</h3></div><strong>{selectedSchema.recordCount.toLocaleString()} <small>ROWS</small></strong></div>
-                <div className="schema-column-table-wrap"><table className="schema-column-table"><thead><tr><th>Column</th><th>Type</th><th>Null</th><th>Default</th><th>Keys</th></tr></thead><tbody>{selectedSchema.columns.map((column) => <tr key={column.name}><td><strong>{column.name}</strong>{column.extra && <small>{column.extra}</small>}</td><td><code>{column.type}</code></td><td>{column.nullable ? "YES" : "NO"}</td><td>{column.defaultValue === null ? "—" : String(column.defaultValue)}</td><td><span className="schema-key-list">{column.keys.length ? column.keys.map((key) => <span className={`schema-key-badge schema-key-${key.kind.toLowerCase()}`} key={`${column.name}-${key.name}`} title={key.name}>{key.kind}</span>) : "—"}</span></td></tr>)}</tbody></table></div>
-                <div className="schema-relations"><div className="schema-relations-title">FOREIGN KEY RELATIONSHIPS <span>{schemaData.relationships.filter((relation) => relation.fromTable === selectedSchema.name || relation.toTable === selectedSchema.name).length}</span></div>
-                  {schemaData.relationships.filter((relation) => relation.fromTable === selectedSchema.name || relation.toTable === selectedSchema.name).length === 0 ? <p className="schema-no-relations">No foreign key relationships recorded for this object.</p> : schemaData.relationships.filter((relation) => relation.fromTable === selectedSchema.name || relation.toTable === selectedSchema.name).map((relation) => <div className="schema-relation-row" key={`${relation.fromTable}-${relation.constraintName}`}><button onClick={() => setSelectedSchemaObject(relation.fromTable)}>{relation.fromTable}</button><span>{relation.fromColumns.join(", ")} <ArrowRight size={12} /> {relation.toColumns.join(", ")}</span><button onClick={() => setSelectedSchemaObject(relation.toTable)}>{relation.toTable}</button><small>{relation.constraintName}</small></div>)}
-                </div>
-              </div>}
-            </div>
-          </>}
-          <div className="data-section-foot"><span><span className="status-dot" /> {schemaData ? `MYSQL / ${schemaData.summary.objectCount} OBJECTS LOADED` : "PK = PRIMARY KEY · FK = FOREIGN KEY · UQ = UNIQUE"}</span><span>PK = PRIMARY KEY · FK = FOREIGN KEY · UQ = UNIQUE</span><a href="#records">INSPECT LIVE ROWS <ArrowDownRight size={13} /></a></div>
+      <section className="collection section-wrap cinema-collection" id="movies">
+        <div className="section-heading"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> BOOKING CASE STUDY</div><h2>Now <em>showing.</em></h2></div><p className="section-intro">Explore a title to see its details and ratings, then find a screening near you.</p><div className="collection-count"><span>{String(movies.length).padStart(2, "0")}</span><small>LIVE MOVIES<br />IN DATABASE</small></div></div>
+        <div className="movie-insight"><Database size={14} /><span>Movie information comes from MySQL through the cinema API. Titles, posters, and scores appear only when recorded.</span></div>
+        {error && movies.length === 0 && !loadingMovies && <div className="movie-reviews-empty" role="alert">{error} Please check the database connection and try again.</div>}
+        <div className="movie-grid cinema-movie-grid" aria-busy={loadingMovies}>
+          {loadingMovies ? <div className="loading-state"><LoadingMark /> Loading movies from the cinema…</div> : movies.length === 0 ? <div className="loading-state">No movie records are available in the database.</div> : movies.slice(0, 10).map((item) => {
+            const count = Number(item.showtimeCount);
+            return <Link className={`movie-card cinema-movie-card ${count === 0 ? "movie-card-no-show" : ""}`} key={item.id} href={`/movie/${item.id}`} aria-label={`Explore ${item.title}`}>
+              <div className="movie-card-poster"><Poster movie={item} /><span className="poster-card-index">NOW SHOWING</span>{count > 0 && <span className="poster-showtime-badge"><span /> {count} SHOWTIME{count === 1 ? "" : "S"}</span>}</div>
+              <div className="movie-card-info">{item.ageRating && <span className="movie-rating">{item.ageRating}</span>}<h3>{item.title}</h3><div className="movie-meta"><span>{item.genres || "Genre unavailable"}</span><span className="meta-dot">·</span><span>{item.releaseDate ? item.releaseDate.slice(0, 4) : "Release year unavailable"}</span></div>{item.reviews.some((review) => review.rawScore.trim() !== "" && Number.isFinite(Number(review.rawScore))) && <div className="movie-card-review-lines">{item.reviews.filter((review) => review.rawScore.trim() !== "" && Number.isFinite(Number(review.rawScore))).slice(0, 2).map((review) => <span key={review.reviewId}><b>{review.sourceName}</b><strong>{formatRawScore(review)}</strong></span>)}</div>}<span className="movie-explore">EXPLORE FILM <ArrowRight size={12} /></span></div>
+            </Link>;
+          })}
         </div>
       </section>
-
-      <section className="records-section section-wrap" id="records">
-        <div className="section-heading records-section-heading">
-          <div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> 02 / LIVE ROW INSPECTOR</div><h2>Read the rows.<br /><em>Follow the keys.</em></h2></div>
-          <p className="section-intro">Select a database table, inspect actual rows, then follow a foreign key to the matching records on the other side.</p>
-          <div className="collection-count"><span>{recordsResult?.total.toLocaleString() ?? "—"}</span><small>ROWS<br />IN FILTER</small></div>
-        </div>
-        <div className="records-explorer">
-          <div className="records-toolbar"><label htmlFor="records-table-select">DATABASE TABLE</label><select id="records-table-select" value={recordTable} onChange={(event) => { setRecordTable(event.target.value); setRecordOffset(0); setRecordFilter(null); setSelectedRecord(null); }}>{schemaData?.objects.filter((item) => item.type === "BASE TABLE").map((item) => <option value={item.name} key={item.name}>{item.name} · {item.recordCount.toLocaleString()} rows</option>)}</select><span>{recordFilter ? "RELATED ROWS" : "LIVE SELECT"} / MYSQL</span></div>
-          {recordsError && <div className="records-message records-message-error"><CircleHelp size={15} /> {recordsError}</div>}
-          {loadingRecords ? <div className="records-message"><LoadingMark /> Loading rows from {recordTable}…</div> : recordsResult && <>
-            <div className="records-query"><code>SELECT * FROM `{recordsResult.table}`{recordFilter ? " WHERE related key values match" : ""} ORDER BY {recordsResult.primaryKey.length ? recordsResult.primaryKey.map((column) => `\`${column}\``).join(", ") : "database row order"} LIMIT {recordsResult.limit} OFFSET {recordsResult.offset};</code><span>{recordsResult.total.toLocaleString()} matching rows</span></div>
-            {recordsResult.rows.length === 0 ? <div className="records-message">No rows match this relationship in the current database.</div> : <>
-              <div className="records-grid-wrap"><table className="records-grid"><thead><tr><th>Inspect</th>{recordsResult.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{recordsResult.rows.map((row, index) => {
-                const rowKey = recordsResult.primaryKey.map((column) => formatRecordValue(row[column])).join("/") || String(recordsResult.offset + index);
-                return <tr key={rowKey} className={selectedRecord === row ? "records-row-selected" : ""}><td><button className="record-inspect-button" onClick={() => setSelectedRecord(row)} aria-label={`Inspect row ${rowKey}`}>{selectedRecord === row ? "SELECTED" : "INSPECT"}</button></td>{recordsResult.columns.map((column) => { const value = recordsResult.redactedColumns?.includes(column) ? "[REDACTED]" : formatRecordValue(row[column]); return <td key={column} title={value}>{value}</td>; })}</tr>;
-              })}</tbody></table></div>
-              <div className="records-pagination"><span>ROWS {recordsResult.total === 0 ? 0 : recordsResult.offset + 1}–{Math.min(recordsResult.offset + recordsResult.rows.length, recordsResult.total)} OF {recordsResult.total}</span><div><button disabled={recordsResult.offset === 0 || loadingRecords} onClick={() => { setRecordOffset(Math.max(0, recordOffset - recordsResult.limit)); setSelectedRecord(null); }}>PREVIOUS</button><button disabled={recordsResult.offset + recordsResult.limit >= recordsResult.total || loadingRecords} onClick={() => { setRecordOffset(recordOffset + recordsResult.limit); setSelectedRecord(null); }}>NEXT</button></div></div>
-              {selectedRecord && <div className="record-detail">
-                <div className="record-detail-heading"><div><span>SELECTED ROW / {recordTable.toUpperCase()}</span><h3>{recordsResult.primaryKey.map((column) => `${column}: ${formatRecordValue(selectedRecord[column])}`).join(" · ") || "Row details"}</h3></div><button onClick={() => setSelectedRecord(null)} aria-label="Close row details"><X size={15} /></button></div>
-                <dl className="record-fields">{recordsResult.columns.map((column) => <div key={column}><dt>{column}</dt><dd>{recordsResult.redactedColumns?.includes(column) ? "[REDACTED]" : formatRecordValue(selectedRecord[column])}</dd></div>)}</dl>
-                <div className="record-links-heading">RELATED RECORDS <span>FROM LIVE FOREIGN KEYS</span></div>
-                {recordRelations.length === 0 ? <p className="record-no-links">No foreign key relationships connect this row.</p> : <div className="record-link-list">{recordRelations.map(({ relation, direction, targetTable, filter }) => <button key={`${relation.constraintName}-${direction}`} className="record-link" onClick={() => { setRecordTable(targetTable); setRecordFilter(filter); setRecordOffset(0); setSelectedRecord(null); }}><span>{direction}</span><strong>{targetTable}</strong><small>{relation.constraintName}</small><ArrowRight size={15} /></button>)}</div>}
-              </div>}
-            </>}
-          </>}
-        </div>
-      </section>
-
-      <section className="collection section-wrap" id="movies">
-        <div className="section-heading">
-          <div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> 03 / BOOKING CASE STUDY</div><h2>One workflow.<br /><em>Four tables.</em></h2></div>
-          <p className="section-intro">Booking is the case study. Choose a real movie and showtime to trace writes across customer, booking, ticket, and payment.</p>
-          <div className="collection-count"><span>{String(movies.length).padStart(2, "0")}</span><small>MOVIE ROWS<br />IN DATABASE</small></div>
-        </div>
-
+      <section className="booking-case-study section-wrap" id="booking">
         <LiveDatabaseActivity key={activityOperationId ?? "booking-idle"} operationId={activityOperationId} fallbackEvents={receipt?.activity ?? []} running={submitting} />
 
         {error && step !== "confirmed" && <div className="error-banner"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
 
-        {!loadingMovies && movies.length > 0 && <div className="read-query"><div className="read-query-heading"><span><Database size={14} /> LIVE SELECT / MYSQL RESULT</span><b>{movies.length} MOVIE ROWS · {movies.reduce((count, item) => count + Number(item.showtimeCount), 0)} FUTURE SHOWTIMES · {movies.reduce((count, item) => count + Number(item.reviewCount), 0)} SOURCE SCORES</b></div><code>SELECT m.Movie_ID AS id, m.Title AS title, m.Poster_Image AS posterImage, m.Movie_Synopsis AS synopsis,<br />m.Movie_Duration AS duration, m.Original_Release_Date AS releaseDate, m.Age_Rating AS ageRating,<br />COUNT(DISTINCT s.Showtime_ID) AS showtimeCount, r.Average_Score_100<br />FROM Movie m LEFT JOIN Showtime s ON s.Movie_ID = m.Movie_ID AND s.Showtime_Status = &apos;AVAILABLE&apos;<br />AND s.Start_Time &gt; NOW() LEFT JOIN V_Movie_Review_Summary r ON r.Movie_ID = m.Movie_ID<br />GROUP BY m.Movie_ID ORDER BY m.Movie_ID;<br /><br />SELECT mr.Movie_ID, mr.Raw_Score, mr.Normalized_Score, rs.Source_Name, rs.Source_Code,<br />mr.Source_URL FROM Movie_Review mr JOIN Review_Source rs ON rs.Source_ID = mr.Source_ID<br />WHERE mr.Movie_ID IN (...movie ids from the first SELECT...);</code></div>}
-
-        <div className="movie-grid" aria-busy={loadingMovies}>
-          {loadingMovies ? (
-            <div className="loading-state"><LoadingMark /> Loading live titles…</div>
-          ) : movies.map((item) => {
-            const active = movie?.id === item.id;
-            const count = Number(item.showtimeCount);
-            return (
-              <button
-                className={`movie-card ${active ? "movie-card-active" : ""} ${count === 0 ? "movie-card-no-show" : ""}`}
-                key={item.id}
-                onClick={() => { setMovie(item); void loadShowtimes(item.id); }}
-                aria-pressed={active}
-              >
-                <div className="movie-card-poster"><Poster movie={item} /><span className="poster-card-index">FILM — {String(item.id).padStart(2, "0")}</span>{count > 0 && <span className="poster-showtime-badge"><span /> {count} SHOWTIME{count === 1 ? "" : "S"}</span>}</div>
-                <div className="movie-card-info"><small className="movie-db-id">MOVIE_ID / {item.id}</small><span className="movie-rating">{item.ageRating || "NR"}</span><h3>{item.title}</h3><div className="movie-card-review-lines">{item.reviews.length > 0 ? item.reviews.slice(0, 2).map((review) => <span key={review.reviewId}><b>{review.sourceName}</b><strong>{formatRawScore(review)}</strong></span>) : <span className="movie-card-no-reviews">NO EXTERNAL SCORES</span>}</div><div className="movie-meta"><span>{item.duration} MIN</span><span className="meta-dot">·</span><span>{count > 0 ? `${count} LIVE SHOW${count === 1 ? "" : "S"}` : "NO FUTURE SHOWS"}</span></div></div>
-                <span className="movie-card-arrow"><ArrowRight size={15} /></span>
-              </button>
-            );
-          })}
-        </div>
-
-        {loadingMovies ? <div className="movie-reviews-loading"><LoadingMark /> Loading external ratings from MySQL…</div> : error && movies.length === 0 ? <div className="movie-reviews-empty">Movie ratings could not be loaded. Check the database connection and try again.</div> : movie && <section className="movie-reviews-panel" aria-live="polite" aria-label={`${movie.title} external movie ratings`}>
-          <div className="movie-reviews-heading"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> 04 / EXTERNAL MOVIE RATINGS</div><h3>{movie.title}<span> · MOVIE_ID / {movie.id}</span></h3></div><div className="movie-reviews-average"><small>PROJECT-DEFINED AVERAGE</small><strong>{formatScore100(movie.averageScore100) ?? "—"}</strong><span>{movie.normalizedReviewCount} normalized source{Number(movie.normalizedReviewCount) === 1 ? "" : "s"}</span></div></div>
-          {movie.reviews.length === 0 ? <p className="movie-reviews-empty">No external ratings are recorded for this movie yet.</p> : <div className="movie-review-list">{movie.reviews.map((review) => <article className="movie-review-row" key={review.reviewId}><div><strong>{review.sourceName}</strong><small>{review.sourceCode}</small></div><strong className="movie-review-raw">{formatRawScore(review)}</strong><span className="movie-review-normalized">{review.normalizedScore === null ? "Normalized score unavailable" : `Normalized ${formatScore100(review.normalizedScore)}`}</span>{review.sourceUrl || review.websiteUrl ? <a href={review.sourceUrl ?? review.websiteUrl ?? undefined} target="_blank" rel="noreferrer">Visit source <ArrowRight size={12} /></a> : <span className="movie-review-no-link">Source link unavailable</span>}</article>)}</div>}
-          <div className="movie-reviews-foot"><span>DATA PATH</span><code>Movie → Movie_Review → Review_Source → API → UI</code><p>Demonstration dataset. Some scores may be simulated and are not verified live ratings.</p></div>
-        </section>}
-
-        <div className="selection-panel" id="booking">
+        <div className="selection-panel">
           <div className="selection-topline"><span><span className="selection-dot" /> BOOKING WORKFLOW</span><span>CASE STUDY / SHOWTIME → SEAT → TRANSACTION</span></div>
-          <div className="selection-title-row"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> {movie?.title ?? "CHOOSE A FILM"}</div><h2>{showtime ? "Choose your seats." : "Find your showtime."}</h2></div><div className="flow-steps"><StepLabel number="01" label="FILM" active={step === "discover"} complete={Boolean(showtime)} /><span className="flow-connector" /><StepLabel number="02" label="SEATS" active={step === "seats"} complete={step === "details" || step === "confirmed"} /><span className="flow-connector" /><StepLabel number="03" label="DETAILS" active={step === "details"} complete={step === "confirmed"} /><span className="flow-connector" /><StepLabel number="04" label="DONE" active={step === "confirmed"} complete={step === "confirmed"} /></div></div>
+          <div className="selection-title-row"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> {movie?.title ?? "CHOOSE A FILM"}</div><h2>Find your showtime.</h2></div><div className="flow-steps"><StepLabel number="01" label="FILM" active={step === "discover"} complete={Boolean(showtime)} /><span className="flow-connector" /><StepLabel number="02" label="SEATS" active={step === "seats"} complete={step === "details" || step === "confirmed"} /><span className="flow-connector" /><StepLabel number="03" label="DETAILS" active={step === "details"} complete={step === "confirmed"} /><span className="flow-connector" /><StepLabel number="04" label="DONE" active={step === "confirmed"} complete={step === "confirmed"} /></div></div>
+
+          {movie && <details className="booking-learning"><summary>How showtimes are found</summary><p>The cinema API filters available future screenings by this Movie_ID and joins the matching theater, branch, and language records.</p></details>}
 
           {!movie && <div className="empty-state">Choose a film from the collection to see screenings.</div>}
           {movie && loadingShows && <div className="inline-loading"><LoadingMark /> Finding showtimes in MySQL…</div>}
@@ -682,6 +457,7 @@ export default function Home() {
                 <div className="seat-and-summary">
                   <div className="seat-area">
                     <div className="seat-map-guide"><span>Tap to choose · up to 4 seats</span><strong aria-live="polite">{selectedSeatIds.length} / 4 SELECTED</strong></div>
+                    <details className="booking-learning seat-learning"><summary>How seat availability works</summary><p>Booked status comes from ticket rows for this screening. The booking endpoint checks seats again inside its transaction before writing tickets.</p></details>
                     <div className="screen-label"><span /> SCREEN <span /></div>
                     <div className="screen-curve" />
                     <div className="seat-map-viewport">
@@ -705,6 +481,7 @@ export default function Home() {
                     <div className="summary-movie">{movie?.title}<small>{showtime.theaterName} · {formatShowtime(showtime.startsAt, { hour: "2-digit", minute: "2-digit", hour12: false })}</small></div>
                     <div className="summary-seat-list">{selectedSeats.length === 0 ? <span className="summary-placeholder">Select up to four seats</span> : selectedSeats.map((seat) => <div className="summary-seat" key={seat.id}><span>{seat.seatRow}{seat.seatColumn} <small>{seat.seatTypeName}</small></span><b>{money.format(Number(seat.price))}</b></div>)}</div>
                     <div className="summary-total"><span>TOTAL</span><strong>{money.format(total)}</strong></div>
+                    <details className="booking-learning summary-learning"><summary>How this booking is saved</summary><p>On confirmation, the server validates the seats and prices and writes the customer, booking, ticket, and payment records together.</p></details>
                     {selectedSeats.length > 0 && <button className="primary-button summary-continue" onClick={() => setStep("details")}>Continue to details <ArrowRight size={15} /></button>}
                     <div className="summary-note"><ShieldCheck size={14} /><span>Seat availability is checked again before booking.</span></div>
                   </aside>
@@ -736,6 +513,7 @@ export default function Home() {
               <div className="confirmation-copy"><span>TRANSACTION COMMITTED {replayed ? "· REPLAYED SAFELY" : "· LIVE MYSQL"}</span><h3>The records are <em>committed.</em></h3><p>Booking #{String(receipt.id).padStart(6, "0")} · {receipt.seats.join(", ")} · {money.format(receipt.total)}</p></div>
               <button className="secondary-button" onClick={startAgain}><RotateCcw size={14} /> Start another booking</button>
               <Link className="database-result-link" href={`/database?bookingId=${receipt.id}`}>Inspect persisted booking rows in Database Explorer <ArrowRight size={13} /></Link>
+              <a className="database-result-link" href="#transactions">Explore the Transaction Lab <ArrowRight size={13} /></a>
               <div className="transaction-stats"><div><small>BOOKING</small><b>#{receipt.id}</b></div><div><small>TICKETS</small><b>{receipt.ticketIds.length}</b></div><div><small>PAYMENT</small><b>#{receipt.paymentId}</b></div><div><small>TOTAL</small><b>{money.format(receipt.total)}</b></div></div>
               <div className="sql-trace"><div className="sql-trace-heading"><div><span>THE DATA TRAIL</span><small>{receipt.transaction ?? (replayed ? "IDEMPOTENT REPLAY" : "COMMITTED")} · {statements.reduce((sum, row) => sum + row.affectedRows, 0)} ROWS AFFECTED</small></div><Database size={17} /></div><div className="trace-flow"><span>USER ACTION</span><ArrowRight size={12} /><span>POST /API/BOOKINGS</span><ArrowRight size={12} /><span>BEGIN</span><ArrowRight size={12} /><span>MYSQL</span><ArrowRight size={12} /><span>COMMIT</span><Check size={13} /></div>
                 {replayed ? <div className="replay-note"><RotateCcw size={13} /> An earlier request with this key already committed. No second booking was created.</div> : receipt.databaseState && <div className="before-after"><div><span>BEFORE · LIVE MYSQL STATE</span><strong>{receipt.databaseState.before.seats.map((seat) => `${seat.label} · ${seat.status}`).join(", ")}</strong><div className="database-row-counts">{Object.entries(receipt.databaseState.before.tableCounts).map(([table, count]) => <span key={table}>{table} <b>{count}</b></span>)}</div><small>Seat availability derived from ticket rows for showtime #{receipt.showtimeId}</small></div><ArrowRight size={16} /><div><span>AFTER · CONFIRMED MYSQL STATE</span><strong>{receipt.databaseState.after.seats.map((seat) => `${seat.label} · ${seat.status} · ticket #${seat.ticketId ?? "—"}`).join(", ")}</strong><div className="database-row-counts">{Object.entries(receipt.databaseState.after.tableCounts).map(([table, count]) => <span key={table}>{table} <b>{count}</b></span>)}</div><small>Booking #{receipt.id} · {receipt.databaseState.after.tickets.length} ticket row{receipt.databaseState.after.tickets.length === 1 ? "" : "s"} · payment #{receipt.databaseState.after.payment.paymentId} {receipt.databaseState.after.payment.status}</small></div></div>}
@@ -756,10 +534,10 @@ export default function Home() {
             <ActivityTimeline events={rollbackResult.activity} />
           </div>}
         </div>
-        <div className="collection-footnote"><span>DATABASE FIRST, ALWAYS.</span><span>BOOKING IS THE CASE STUDY; THE ROWS AND RELATIONSHIPS ARE THE SUBJECT.</span><span>SCROLL TO EXPLORE <ChevronDown size={13} /></span></div>
+        <div className="collection-footnote"><span>MAKE IT A MOVIE NIGHT.</span><span>CHOOSE A FILM · FIND A SHOWTIME · PICK YOUR SEATS</span><a href="#top">BACK TO TOP <ChevronDown size={13} /></a></div>
       </section>
 
-      <footer className="footer"><a className="brand-lockup" href="#top"><span className="brand-mark"><Clapperboard size={16} /></span><span className="brand-type">cinema<span>/</span>db</span></a><span>BUILT TO MAKE THE DATABASE VISIBLE.</span><a href="#top">BACK TO TOP <ArrowRight className="back-top-icon" size={12} /></a></footer>
+      <footer className="footer"><a className="brand-lockup" href="#top"><span className="brand-mark"><Clapperboard size={16} /></span><span className="brand-type">cinema<span>/</span>db</span></a><span>YOUR NEXT SHOW STARTS HERE.</span><a href="#top">BACK TO TOP <ArrowRight className="back-top-icon" size={12} /></a></footer>
     </WorkspaceFrame>
   );
 }

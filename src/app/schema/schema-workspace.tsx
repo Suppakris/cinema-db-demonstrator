@@ -302,7 +302,7 @@ export function SchemaWorkspace() {
           </aside>
           <section className={`erd-canvas${fitMode ? " erd-canvas-fitted" : ""}`} ref={canvasRef} aria-label="Interactive entity relationship diagram">
             <svg viewBox={`0 0 ${width} ${height}`} role="application" aria-label="Entity relationship diagram. Use pointer to pan and mouse wheel or controls to zoom." onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onWheel={onWheel} style={{ width, height, cursor: drag ? "grabbing" : "grab" }}>
-              <defs><marker id="erd-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#e50914" /></marker></defs>
+              <defs><marker id="erd-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#b89b63" /></marker></defs>
               <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
                 {visibleGroups.map((group) => <text key={group.id} className="erd-group-label" x="18" y={(layout.headers.get(group.id) ?? 16) + 11}>{group.label.toUpperCase()} · {group.tables.length} TABLES · {group.relationships.length} INTERNAL LINKS</text>)}
                 {edgeLayouts.map(({ relation, route, label, labelX, labelY, index }) => (

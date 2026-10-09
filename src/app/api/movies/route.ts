@@ -16,6 +16,8 @@ type MovieRow = RowDataPacket & {
   reviewCount: number;
   normalizedReviewCount: number;
   averageScore100: string | null;
+  genres: string | null;
+  credits: string | null;
 };
 
 type ReviewRow = RowDataPacket & {
@@ -41,7 +43,14 @@ export async function GET() {
               COUNT(DISTINCT s.Showtime_ID) AS showtimeCount,
               COALESCE(r.Source_Count, 0) AS reviewCount,
               COALESCE(r.Normalized_Source_Count, 0) AS normalizedReviewCount,
-              r.Average_Score_100 AS averageScore100
+              r.Average_Score_100 AS averageScore100,
+              (SELECT GROUP_CONCAT(g.Genre_Name ORDER BY g.Genre_Name SEPARATOR ', ')
+               FROM Movie_Genre_Details mgd JOIN Genre g ON g.Genre_ID = mgd.Genre_ID
+               WHERE mgd.Movie_ID = m.Movie_ID) AS genres,
+              (SELECT GROUP_CONCAT(CONCAT(p.First_Name, ' ', p.Last_Name, ' — ', mpr.Role_Type)
+                 ORDER BY mpr.Role_Type, p.Last_Name, p.First_Name SEPARATOR ', ')
+               FROM Movie_Person_Role mpr JOIN Person p ON p.Person_ID = mpr.Person_ID
+               WHERE mpr.Movie_ID = m.Movie_ID AND mpr.Role_Type IN ('Actor', 'Director')) AS credits
        FROM movie m
        LEFT JOIN showtime s ON s.Movie_ID = m.Movie_ID AND s.Showtime_Status = 'AVAILABLE'
          AND s.Start_Time > NOW()
