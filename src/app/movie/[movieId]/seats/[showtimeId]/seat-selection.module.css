@@ -60,3 +60,40 @@
 .footer { display: flex; justify-content: space-between; align-items: center; min-height: 64px; border-top: 1px solid #dcdad1; color: #777970; font: 10px var(--font-geist-mono), monospace; letter-spacing: .1em; }
 .footer a { color: #273e32; font: 16px Georgia, serif; text-decoration: none; }
 @media (max-width: 760px) { .page { padding: 0 18px; }.nav { height: 62px; }.back { font-size: 9px; }.heading { padding: 36px 0 22px; }.workspace { grid-template-columns: 1fr; gap: 15px; }.seatPanel { min-width: 0; }.seatRow { gap: 5px; }.seatViewport { padding: 0 8px 8px; }.footer { gap: 12px; }.footer > span { max-width: 130px; text-align: right; font-size: 9px; } }
+
+/* Theater-style seat map. Seat data and availability remain supplied by the showtime API. */
+.screenLabel { margin-top: 20px; }
+.screenLabel span { width: clamp(34px, 8vw, 74px); }
+.screenCurve { width: min(78%, 700px); height: 28px; margin: 18px auto 8px; }
+.mapCaption { display: flex; justify-content: space-between; width: min(100%, 760px); margin: 0 auto 16px; padding: 0 12px; color: #929187; font: 9px var(--font-geist-mono), monospace; letter-spacing: .12em; }
+.seatViewport { padding: 0 22px 12px; }
+.seatMap { gap: 11px; min-width: 100%; width: max-content; }
+.seatRow { display: grid; grid-template-columns: 22px max-content 22px; align-items: center; gap: clamp(9px, 1.6vw, 20px); min-width: 100%; }
+.seatGroup { display: flex; justify-content: center; gap: clamp(5px, .8vw, 10px); }
+.rowLabel { display: grid; place-items: center; width: 22px; height: 30px; color: #74766d; font: 12px Georgia, serif; }
+.seatButton { position: relative; display: grid; flex: 0 0 36px; place-items: center; width: 36px; height: 33px; padding: 0; overflow: visible; border: 1px solid #78a17e; border-radius: 9px 9px 6px 6px; background: #dcebdd; color: #397347; font: inherit; transition: transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.seatButton:hover:not(:disabled) { transform: translateY(-2px); border-color: #397347; background: #c7e0ca; box-shadow: 0 3px 8px #455c351a; }
+.seatButton:is(.seat-premium) { border-color: #d49a55; background: #f5e2c7; color: #a65b16; }
+.seatButton:is(.seat-premium):hover:not(:disabled) { border-color: #a65b16; background: #f0d3aa; }
+.seatButton:is(.seat-selected), .seatButton:is(.seat-selected):hover:not(:disabled) { border-color: #176b3a; background: #218447; color: #fff; box-shadow: 0 3px 10px #176b3a45; }
+.seatButton:is(.seat-unavailable), .seatButton:is(.seat-unavailable):hover { border-color: #b8b8b2; background: #dededb; color: #85857f; box-shadow: none; transform: none; }
+.chairBack { position: absolute; top: 3px; left: 7px; right: 7px; height: 16px; border: 1px solid currentColor; border-bottom-width: 2px; border-radius: 6px 6px 3px 3px; background: currentColor; opacity: .28; }
+.chairBack::before, .chairBack::after { position: absolute; bottom: -3px; width: 2px; height: 6px; border-radius: 2px; background: currentColor; content: ""; opacity: .72; }
+.chairBack::before { left: -3px; }.chairBack::after { right: -3px; }
+.chairBase { position: absolute; bottom: 4px; left: 6px; right: 6px; height: 4px; border: 1px solid currentColor; border-radius: 3px; background: currentColor; opacity: .48; }
+.seatCheck { position: relative; z-index: 1; margin-top: -2px; }
+.seatButton:disabled .chairBack, .seatButton:disabled .chairBase { opacity: .24; }
+.seatButton:focus-visible { z-index: 2; outline: 2px solid #b89b63; outline-offset: 3px; }
+.legend { padding-top: 18px; }
+.premiumKey { background: #d9822b; }
+@media (max-width: 760px) {
+  .screenLabel { margin-top: 14px; }
+  .screenCurve { width: 76%; height: 22px; margin-top: 13px; }
+  .mapCaption { min-width: max-content; padding: 0 8px; font-size: 8px; }
+  .seatViewport { padding: 0 10px 10px; }
+  .seatRow { grid-template-columns: 18px max-content 18px; gap: 7px; }
+  .rowLabel { width: 18px; }
+  .seatGroup { gap: 5px; }
+  .seatButton { flex-basis: 31px; width: 31px; height: 30px; }
+  .chairBack { left: 5px; right: 5px; height: 15px; }
+}

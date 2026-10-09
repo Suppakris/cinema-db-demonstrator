@@ -145,15 +145,23 @@ export default function SeatSelectionPage({ params }: PageProps<"/movie/[movieId
           <div className={styles.panelTopline}><span>SELECT UP TO 4 SEATS</span><span aria-live="polite">{selectedIds.length} / 4 SELECTED</span></div>
           <details className={styles.insight}><summary>How seat availability works</summary><p>Booked status and seat prices come from this screening’s live database records. The booking API checks availability and price again inside its transaction.</p></details>
           <div className={styles.screenLabel}><span /> SCREEN <span /></div>
-          <div className={styles.screenCurve} />
+          <div className={styles.screenCurve} aria-hidden="true" />
+          <div className={styles.mapCaption}><span>FRONT OF THEATER</span><span>{seats.length} SEATS · {new Set(rows).size} ROWS</span></div>
           <div className={styles.seatViewport}><div className={styles.seatMap} role="group" aria-label="Seat selection">
-            {rows.map((rowName) => <div className={styles.seatRow} key={rowName}><span className={styles.rowLabel}>{rowName}</span>{seats.filter((seat) => seat.seatRow === rowName).map((seat) => {
+            {rows.map((rowName) => {
+              const rowSeats = seats.filter((seat) => seat.seatRow === rowName);
+              return <div className={styles.seatRow} key={rowName}><span className={styles.rowLabel} aria-hidden="true">{rowName}</span><div className={styles.seatGroup}>
+              {rowSeats.map((seat, index) => {
               const selected = selectedIds.includes(seat.id);
               const unavailable = seat.status !== "AVAILABLE" || seat.physicalStatus !== "AVAILABLE" || seat.priceId === null;
-              return <button key={seat.id} type="button" className={`seat ${selected ? "seat-selected" : ""} ${unavailable ? "seat-unavailable" : ""} ${seat.seatTypeId !== 1 ? "seat-premium" : ""}`} disabled={unavailable} onClick={() => toggleSeat(seat)} aria-pressed={selected} aria-label={`${seat.seatRow}${seat.seatColumn}, ${seat.seatTypeName}, ${unavailable ? seat.status === "BOOKED" ? "booked" : "unavailable" : money.format(Number(seat.price))}`}>{selected ? <Check size={13} /> : seat.seatColumn}</button>;
-            })}</div>)}
+              const statusLabel = seat.status === "BOOKED" ? "booked" : seat.physicalStatus !== "AVAILABLE" ? "out of service" : seat.priceId === null ? "price unavailable" : "available";
+              const previousColumn = rowSeats[index - 1]?.seatColumn;
+              const gap = previousColumn === undefined ? 0 : seat.seatColumn - previousColumn;
+              return <button key={seat.id} type="button" className={`seat ${styles.seatButton} ${selected ? "seat-selected" : ""} ${unavailable ? "seat-unavailable" : ""} ${seat.seatTypeId !== 1 ? "seat-premium" : ""}`} style={gap > 1 ? { marginLeft: `${Math.min(gap - 1, 3) * 12}px` } : undefined} disabled={unavailable} onClick={() => toggleSeat(seat)} aria-pressed={selected} aria-label={`${seat.seatRow}${seat.seatColumn}, ${seat.seatTypeName}, ${statusLabel}${!unavailable ? `, ${money.format(Number(seat.price))}` : ""}`} title={`${seat.seatRow}${seat.seatColumn} · ${seat.seatTypeName} · ${statusLabel}${!unavailable ? ` · ${money.format(Number(seat.price))}` : ""}`}><span className={styles.chairBack} aria-hidden="true" />{selected && <Check className={styles.seatCheck} size={14} aria-hidden="true" />}<span className={styles.chairBase} aria-hidden="true" /></button>;
+            })}</div><span className={styles.rowLabel} aria-hidden="true">{rowName}</span></div>;
+            })}
           </div></div>
-          <div className={styles.legend}><span><i className={styles.availableKey} /> AVAILABLE</span><span><i className={styles.selectedKey} /> SELECTED</span><span><i className={styles.bookedKey} /> BOOKED</span></div>
+          <div className={styles.legend}><span><i className={styles.availableKey} /> AVAILABLE</span><span><i className={styles.selectedKey} /> SELECTED</span><span><i className={styles.premiumKey} /> PREMIUM</span><span><i className={styles.bookedKey} /> BOOKED / UNAVAILABLE</span></div>
         </section>
         <aside className={styles.summary}>
           <div className={styles.summaryTitle}><span>BOOKING SUMMARY</span><span>{selectedSeats.length} SEATS</span></div>
