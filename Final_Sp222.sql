@@ -461,9 +461,44 @@ CREATE TABLE Payment (
         REFERENCES Payment_Provider_Account(Provider_Account_ID) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ============================================================================
+-- SECTION 6: MOVIE REVIEWS
+-- ============================================================================
+
+
+CREATE TABLE Movie_Review (
+    Review_ID INT NOT NULL AUTO_INCREMENT,
+    Movie_ID INT NOT NULL,
+    Source_ID INT NOT NULL,
+    Raw_Score VARCHAR(20) NOT NULL,
+    -- 0..100; NULL means conversion is not yet defined, NOT a zero score.
+    Normalized_Score DECIMAL(5,2),
+    Source_URL VARCHAR(1000),
+    Updated_At DATETIME NOT NULL COMMENT 'UTC; when the score was checked at source',
+    CONSTRAINT PK_Movie_Review PRIMARY KEY (Review_ID),
+    CONSTRAINT UQ_Movie_Review_Source UNIQUE (Movie_ID, Source_ID),
+    CONSTRAINT FK_Movie_Review_Movie FOREIGN KEY (Movie_ID) REFERENCES Movie(Movie_ID),
+    CONSTRAINT FK_Movie_Review_Source FOREIGN KEY (Source_ID) REFERENCES Review_Source(Source_ID),
+    CONSTRAINT CHK_Movie_Review_Raw CHECK (CHAR_LENGTH(TRIM(Raw_Score)) > 0),
+    CONSTRAINT CHK_Movie_Review_Normalized CHECK (
+        Normalized_Score IS NULL OR Normalized_Score BETWEEN 0 AND 100
+    ),
+    CONSTRAINT CHK_Movie_Review_URL CHECK (
+        Source_URL IS NULL OR CHAR_LENGTH(TRIM(Source_URL)) > 0
+    )
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Seed only identified sources. Do not guess the third logo's identity or grade rule.
+INSERT INTO Review_Source
+    (Source_Code, Source_Name, Website_URL, Score_Type, Score_Max, Normalization_Rule)
+VALUES
+    ('IMDB', 'IMDb', 'https://www.imdb.com', 'DECIMAL', 10,
+     'User rating: parse decimal 1..10; normalized = raw / 10 * 100.'),
+    ('ROTTEN_TOMATOES', 'Rotten Tomatoes', 'https://www.rottentomatoes.com', 'PERCENT', 100,
+     'Tomatometer only: accept integer 0..100 with optional trailing percent sign; normalized = parsed value.');
 
 -- ============================================================================
--- SECTION 6: REAL-TIME ANALYTICAL VIEWS (BUSINESS INTELLIGENCE & REPORTING)
+-- SECTION 7: REAL-TIME ANALYTICAL VIEWS (BUSINESS INTELLIGENCE & REPORTING)
 -- Fully non-redundant derived reporting preserving strict 3NF database architecture.
 -- ============================================================================
 
@@ -530,3 +565,15 @@ JOIN Showtime s ON t.Showtime_ID = s.Showtime_ID
 JOIN Movie m ON s.Movie_ID = m.Movie_ID
 WHERE b.Booking_Status = 'CONFIRMED'
 GROUP BY Month_Year, m.Movie_ID, m.Title;
+
+-- Optional query view; no duplicate summary column is stored in Movie.
+-- Equal weight per available, convertible source. Do not count missing scores as zero.
+CREATE VIEW V_Movie_Review_Summary AS
+SELECT m.Movie_ID,
+       COUNT(r.Review_ID) AS Source_Count,
+       COUNT(r.Normalized_Score) AS Normalized_Source_Count,
+       ROUND(SUM(r.Normalized_Score) * 1.0 / NULLIF(COUNT(r.Normalized_Score), 0), 2)
+           AS Average_Score_100
+FROM Movie m
+LEFT JOIN Movie_Review r ON r.Movie_ID = m.Movie_ID
+GROUP BY m.Movie_ID;

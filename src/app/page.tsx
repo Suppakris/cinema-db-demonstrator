@@ -26,6 +26,19 @@ import { LiveDatabaseActivity } from "@/components/live-database-activity";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+type MovieReview = {
+  reviewId: number;
+  rawScore: string;
+  normalizedScore: string | null;
+  sourceName: string;
+  sourceCode: string;
+  sourceUrl: string | null;
+  websiteUrl: string | null;
+  scoreType: string;
+  scoreMax: string | null;
+  updatedAt: string;
+};
+
 type Movie = {
   id: number;
   title: string;
@@ -35,6 +48,10 @@ type Movie = {
   releaseDate: string;
   ageRating: string;
   showtimeCount: number;
+  reviewCount: number;
+  normalizedReviewCount: number;
+  averageScore100: string | null;
+  reviews: MovieReview[];
 };
 
 type Showtime = {
@@ -172,6 +189,17 @@ function formatRecordValue(value: unknown) {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function formatRawScore(review: MovieReview) {
+  if (review.scoreType.toUpperCase() === "PERCENT") return `${review.rawScore}%`;
+  const max = review.scoreMax ? Number(review.scoreMax).toString() : null;
+  return max ? `${review.rawScore}/${max}` : review.rawScore;
+}
+
+function formatScore100(score: string | null) {
+  if (score === null) return null;
+  return `${Number(score).toFixed(2).replace(/\.?0+$/, "")}/100`;
 }
 
 function ActivityTimeline({ events }: { events: DatabaseActivityEntry[] }) {
@@ -594,7 +622,7 @@ export default function Home() {
 
         {error && step !== "confirmed" && <div className="error-banner"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
 
-        {!loadingMovies && movies.length > 0 && <div className="read-query"><div className="read-query-heading"><span><Database size={14} /> LIVE SELECT / MYSQL RESULT</span><b>{movies.length} MOVIE ROWS · {movies.reduce((count, item) => count + Number(item.showtimeCount), 0)} FUTURE SHOWTIMES</b></div><code>SELECT m.Movie_ID AS id, m.Title AS title, m.Poster_Image AS posterImage, m.Movie_Synopsis AS synopsis,<br />m.Movie_Duration AS duration, m.Original_Release_Date AS releaseDate, m.Age_Rating AS ageRating,<br />COUNT(DISTINCT s.Showtime_ID) AS showtimeCount FROM movie m LEFT JOIN showtime s<br />ON s.Movie_ID = m.Movie_ID AND s.Showtime_Status = &apos;AVAILABLE&apos; AND s.Start_Time &gt; NOW()<br />GROUP BY m.Movie_ID ORDER BY m.Movie_ID;</code></div>}
+        {!loadingMovies && movies.length > 0 && <div className="read-query"><div className="read-query-heading"><span><Database size={14} /> LIVE SELECT / MYSQL RESULT</span><b>{movies.length} MOVIE ROWS · {movies.reduce((count, item) => count + Number(item.showtimeCount), 0)} FUTURE SHOWTIMES · {movies.reduce((count, item) => count + Number(item.reviewCount), 0)} SOURCE SCORES</b></div><code>SELECT m.Movie_ID AS id, m.Title AS title, m.Poster_Image AS posterImage, m.Movie_Synopsis AS synopsis,<br />m.Movie_Duration AS duration, m.Original_Release_Date AS releaseDate, m.Age_Rating AS ageRating,<br />COUNT(DISTINCT s.Showtime_ID) AS showtimeCount, r.Average_Score_100<br />FROM Movie m LEFT JOIN Showtime s ON s.Movie_ID = m.Movie_ID AND s.Showtime_Status = &apos;AVAILABLE&apos;<br />AND s.Start_Time &gt; NOW() LEFT JOIN V_Movie_Review_Summary r ON r.Movie_ID = m.Movie_ID<br />GROUP BY m.Movie_ID ORDER BY m.Movie_ID;<br /><br />SELECT mr.Movie_ID, mr.Raw_Score, mr.Normalized_Score, rs.Source_Name, rs.Source_Code,<br />mr.Source_URL FROM Movie_Review mr JOIN Review_Source rs ON rs.Source_ID = mr.Source_ID<br />WHERE mr.Movie_ID IN (...movie ids from the first SELECT...);</code></div>}
 
         <div className="movie-grid" aria-busy={loadingMovies}>
           {loadingMovies ? (
@@ -610,12 +638,18 @@ export default function Home() {
                 aria-pressed={active}
               >
                 <div className="movie-card-poster"><Poster movie={item} /><span className="poster-card-index">FILM — {String(item.id).padStart(2, "0")}</span>{count > 0 && <span className="poster-showtime-badge"><span /> {count} SHOWTIME{count === 1 ? "" : "S"}</span>}</div>
-                <div className="movie-card-info"><small className="movie-db-id">MOVIE_ID / {item.id}</small><span className="movie-rating">{item.ageRating || "NR"}</span><h3>{item.title}</h3><div className="movie-meta"><span>{item.duration} MIN</span><span className="meta-dot">·</span><span>{count > 0 ? `${count} LIVE SHOW${count === 1 ? "" : "S"}` : "NO FUTURE SHOWS"}</span></div></div>
+                <div className="movie-card-info"><small className="movie-db-id">MOVIE_ID / {item.id}</small><span className="movie-rating">{item.ageRating || "NR"}</span><h3>{item.title}</h3><div className="movie-card-review-lines">{item.reviews.length > 0 ? item.reviews.slice(0, 2).map((review) => <span key={review.reviewId}><b>{review.sourceName}</b><strong>{formatRawScore(review)}</strong></span>) : <span className="movie-card-no-reviews">NO EXTERNAL SCORES</span>}</div><div className="movie-meta"><span>{item.duration} MIN</span><span className="meta-dot">·</span><span>{count > 0 ? `${count} LIVE SHOW${count === 1 ? "" : "S"}` : "NO FUTURE SHOWS"}</span></div></div>
                 <span className="movie-card-arrow"><ArrowRight size={15} /></span>
               </button>
             );
           })}
         </div>
+
+        {loadingMovies ? <div className="movie-reviews-loading"><LoadingMark /> Loading external ratings from MySQL…</div> : error && movies.length === 0 ? <div className="movie-reviews-empty">Movie ratings could not be loaded. Check the database connection and try again.</div> : movie && <section className="movie-reviews-panel" aria-live="polite" aria-label={`${movie.title} external movie ratings`}>
+          <div className="movie-reviews-heading"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> 04 / EXTERNAL MOVIE RATINGS</div><h3>{movie.title}<span> · MOVIE_ID / {movie.id}</span></h3></div><div className="movie-reviews-average"><small>PROJECT-DEFINED AVERAGE</small><strong>{formatScore100(movie.averageScore100) ?? "—"}</strong><span>{movie.normalizedReviewCount} normalized source{Number(movie.normalizedReviewCount) === 1 ? "" : "s"}</span></div></div>
+          {movie.reviews.length === 0 ? <p className="movie-reviews-empty">No external ratings are recorded for this movie yet.</p> : <div className="movie-review-list">{movie.reviews.map((review) => <article className="movie-review-row" key={review.reviewId}><div><strong>{review.sourceName}</strong><small>{review.sourceCode}</small></div><strong className="movie-review-raw">{formatRawScore(review)}</strong><span className="movie-review-normalized">{review.normalizedScore === null ? "Normalized score unavailable" : `Normalized ${formatScore100(review.normalizedScore)}`}</span>{review.sourceUrl || review.websiteUrl ? <a href={review.sourceUrl ?? review.websiteUrl ?? undefined} target="_blank" rel="noreferrer">Visit source <ArrowRight size={12} /></a> : <span className="movie-review-no-link">Source link unavailable</span>}</article>)}</div>}
+          <div className="movie-reviews-foot"><span>DATA PATH</span><code>Movie → Movie_Review → Review_Source → API → UI</code><p>Demonstration dataset. Some scores may be simulated and are not verified live ratings.</p></div>
+        </section>}
 
         <div className="selection-panel" id="booking">
           <div className="selection-topline"><span><span className="selection-dot" /> BOOKING WORKFLOW</span><span>CASE STUDY / SHOWTIME → SEAT → TRANSACTION</span></div>

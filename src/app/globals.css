@@ -1014,3 +1014,42 @@ body, .cinema-shell, .workspace-main, .footer { background: #fff; color: #171717
   .schema-cross-links button { grid-template-columns: minmax(70px,1fr) minmax(50px,1fr) 14px minmax(70px,1fr) minmax(50px,1fr); }
   .schema-cross-links button small { grid-column: 2 / -1; }
 }
+
+.movie-card-review-lines { display: grid; gap: 4px; margin: 0 0 9px; color: #737373; font-size: 8px; letter-spacing: .03em; }
+.movie-card-review-lines span { display: flex; justify-content: space-between; gap: 8px; }
+.movie-card-review-lines b { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.movie-card-review-lines strong { flex: 0 0 auto; color: #292929; font-weight: 650; }
+.movie-card-review-lines .movie-card-no-reviews { color: #888; font: 7px var(--font-geist-mono), monospace; letter-spacing: .07em; }
+.movie-reviews-panel { margin: 22px 0 0; border: 1px solid #e5e2df; background: #fff; }
+.movie-reviews-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 25px; border-bottom: 1px solid #ece9e6; }
+.movie-reviews-heading h3 { margin: 9px 0 0; color: #222; font: 400 24px var(--serif); }
+.movie-reviews-heading h3 span { color: #888; font: 9px var(--font-geist-mono), monospace; }
+.movie-reviews-average { display: grid; gap: 4px; min-width: 150px; text-align: right; }
+.movie-reviews-average small, .movie-reviews-average span { color: #777; font: 8px var(--font-geist-mono), monospace; letter-spacing: .06em; }
+.movie-reviews-average strong { color: #e50914; font: 400 27px var(--serif); }
+.movie-review-row { display: grid; grid-template-columns: minmax(130px, 1fr) 110px minmax(140px, .8fr) auto; align-items: center; gap: 18px; padding: 15px 25px; border-bottom: 1px solid #f0eeec; }
+.movie-review-row > div { display: grid; gap: 4px; }
+.movie-review-row > div strong { color: #292929; font-size: 11px; }
+.movie-review-row small, .movie-review-normalized, .movie-review-no-link { color: #888; font: 8px var(--font-geist-mono), monospace; }
+.movie-review-raw { color: #222; font: 600 15px var(--font-geist-mono), monospace; }
+.movie-review-row a { display: inline-flex; align-items: center; gap: 5px; color: #555; font-size: 9px; white-space: nowrap; }
+.movie-review-row a:hover { color: #e50914; }
+.movie-reviews-empty, .movie-reviews-loading { display: flex; align-items: center; gap: 9px; margin: 0; padding: 20px 25px; color: #777; font-size: 11px; }
+.movie-reviews-loading { border: 1px solid #e5e2df; background: #fff; }
+.movie-reviews-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 9px 14px; padding: 14px 25px; background: #f8f7f6; }
+.movie-reviews-foot > span { color: #777; font: 8px var(--font-geist-mono), monospace; letter-spacing: .08em; }
+.movie-reviews-foot code { color: #333; font: 9px var(--font-geist-mono), monospace; }
+.movie-reviews-foot p { flex: 1 1 100%; margin: 0; color: #777; font-size: 9px; }
+@media (max-width: 700px) {
+  .movie-card-review-lines { grid-column: 2; margin: 0 10px 5px; font-size: 7px; }
+  .movie-reviews-heading { align-items: flex-start; flex-direction: column; padding: 18px 16px; }
+  .movie-reviews-heading h3 { font-size: 21px; }
+  .movie-reviews-average { text-align: left; }
+  .movie-review-row { grid-template-columns: 1fr auto; gap: 9px 12px; padding: 14px 16px; }
+  .movie-review-row > div { grid-column: 1; }
+  .movie-review-raw { grid-column: 2; grid-row: 1; }
+  .movie-review-normalized, .movie-review-no-link { grid-column: 1; }
+  .movie-review-row a { grid-column: 2; grid-row: 2; }
+  .movie-reviews-empty, .movie-reviews-loading { padding: 16px; }
+  .movie-reviews-foot { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
+}
