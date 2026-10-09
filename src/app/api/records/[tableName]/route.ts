@@ -14,6 +14,8 @@ function quoteIdentifier(identifier: string) {
   return `\`${identifier.replace(/`/g, "``")}\``;
 }
 
+const sensitiveColumn = /email|phone|first.?name|last.?name|card.?number|cardholder|merchant.?account.?ref|provider.?account.?id|provider.?transaction|idempotency.?key|password|secret|token/i;
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const { tableName } = await context.params;
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) {
@@ -70,7 +72,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     );
 
     const columns = columnRows.map((column) => column.columnName);
-    const invalidFilterColumn = Object.keys(filter).some((column) => !columns.includes(column));
+    const redactedColumns = columns.filter((column) => sensitiveColumn.test(column));
+    const readableColumns = columns.filter((column) => !sensitiveColumn.test(column));
+    const invalidFilterColumn = Object.keys(filter).some((column) => !columns.includes(column) || sensitiveColumn.test(column));
     const invalidFilterValue = Object.values(filter).some((value) =>
       value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean",
     );
@@ -89,8 +93,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const orderBy = primaryKeyRows.length
       ? ` ORDER BY ${primaryKeyRows.map((column) => quoteIdentifier(column.columnName)).join(", ")}`
       : "";
+    const projection = readableColumns.length ? readableColumns.map(quoteIdentifier).join(", ") : "1 AS `redacted_record`";
     const [rows] = await connection.query<RowDataPacket[]>(
-      `SELECT * FROM ${quotedTable}${whereClause}${orderBy} LIMIT ? OFFSET ?`,
+      `SELECT ${projection} FROM ${quotedTable}${whereClause}${orderBy} LIMIT ? OFFSET ?`,
       [...filterValues, limit, offset],
     );
 
@@ -100,6 +105,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       limit,
       offset,
       columns,
+      redactedColumns,
       primaryKey: primaryKeyRows.map((column) => column.columnName),
       rows,
     });

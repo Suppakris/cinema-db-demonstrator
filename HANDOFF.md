@@ -6,7 +6,7 @@ Demonstrate the cinema database through the web interface. Prioritize schema str
 
 ## Current phase
 
-Phase 8 — Final implementation verification completed. Live MySQL, schema DDL, record APIs, booking state, rollback consistency, activity responses, lint, and production build all passed. Rendered browser visual review remains pending because no browser was available in this session.
+Phase 10 — ERD table-card and responsive Fit-to-view refinements completed. Production build, TypeScript, lint, and diff checks pass. Rendered browser checks verified the fitted ERD at desktop and smaller viewport sizes.
 
 ## Completed
 
@@ -122,6 +122,8 @@ Phase 8 — Final implementation verification completed. Live MySQL, schema DDL,
 - [x] Phase 6 — Database activity / SQL visualization
 - [x] Phase 7 — UI refocus
 - [x] Phase 8 — Final verification
+- [x] Phase 9 — Demo readiness
+- [x] Phase 10 — ERD table cards and responsive Fit-to-view
 
 ## Phase 9 — Demo readiness
 
@@ -129,6 +131,16 @@ Phase 8 — Final implementation verification completed. Live MySQL, schema DDL,
 - Replaced the starter README opening with a project description and a direct link to the demo guide.
 - Reviewed the guide against the current page, database configuration, and transaction route. `git diff --check` passes. No application code or database state changed in this phase.
 
+## Phase 10 — ERD table cards and responsive Fit-to-view
+
+- Updated `/schema` entity cards to render every column from live schema metadata, including column name, type, PK/FK/UQ markers, nullability, and available default/extra metadata. No table or column definitions are hardcoded in the UI.
+- Card widths and heights now accommodate table-like rows. Row placement uses each grid row's tallest card, and canvas bounds include the dynamic card heights and relationship-routing gap to avoid card overlap or clipped lower routes.
+- Preserved the existing relationship-routing strategy and table-level connections. Edge endpoints now use each node's actual height.
+- Replaced the Fit button's 100% reset with a fitted scale and centered pan based on the current ERD and canvas dimensions. Fit mode recalculates on viewport resize and hides scrollbars; manual zoom or pan returns to the scrollable workspace.
+- Browser inspection at 1800×1400 fitted the booking group at 84%; at 1200×900 it refitted at 62%. The diagram remained centered within the canvas at both sizes. This checked the 10-table booking view with 9 internal links.
+- Changed `src/app/schema/schema-workspace.tsx` and `src/app/globals.css`. Verification passed: `pnpm build`, `pnpm exec tsc --noEmit`, `pnpm exec eslint src`, and `git diff --check`. Existing line-ending warnings were reported by Git.
+- The browser screenshot is a temporary artifact at `%TEMP%\cinema-erd-fit.png`; it is not a project file.
+
 ## Next step
 
-Implementation checkpoints and the demo guide are complete. If a browser surface becomes available later, inspect the rendered desktop/mobile layout and transaction interactions; functional database verification is complete.
+The schema view has been visually checked at two desktop viewport sizes. Next, exercise pointer pan, wheel/button zoom, table selection, and relationship selection in-browser, then review the booking and database pages at a narrow mobile viewport. No schema or database changes were made for Phase 10.

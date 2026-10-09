@@ -154,7 +154,28 @@ export async function GET() {
         tableRecordCount: tableObjects.reduce((total, object) => total + object.recordCount, 0),
       },
       objects,
-      relationships: [...relationMap.values()],
+      relationships: [...relationMap.values()].map((relation) => {
+        const isUniqueKey = (tableName: string, columns: string[]) => {
+          const constraints = new Map<string, string[]>();
+          for (const key of keyRows) {
+            if (key.objectName !== tableName || !["PRIMARY KEY", "UNIQUE"].includes(key.constraintType)) continue;
+            const constraintColumns = constraints.get(key.constraintName) ?? [];
+            constraintColumns.push(key.columnName);
+            constraints.set(key.constraintName, constraintColumns);
+          }
+          return [...constraints.values()].some((uniqueColumns) =>
+            uniqueColumns.length === columns.length && columns.every((column) => uniqueColumns.includes(column)),
+          );
+        };
+        const nullable = relation.fromColumns.some((name) =>
+          columnRows.some((column) => column.objectName === relation.fromTable && column.name === name && column.nullable === "YES"),
+        );
+        return {
+          ...relation,
+          cardinality: isUniqueKey(relation.fromTable, relation.fromColumns) ? "1:1" as const : "1:N" as const,
+          optional: nullable,
+        };
+      }),
     });
   } catch {
     return NextResponse.json({ error: "Database schema metadata could not be loaded." }, { status: 503 });

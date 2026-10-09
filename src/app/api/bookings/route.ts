@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { db } from "@/lib/db";
+import { observeConnection } from "@/lib/db-activity";
+import { completeOperation, publishOperationEvent } from "@/lib/operation-events";
 
 export const runtime = "nodejs";
 
@@ -104,14 +106,27 @@ function validText(value: unknown, maxLength: number): value is string {
 }
 
 export async function POST(request: NextRequest) {
+  const requestedOperationId = request.headers.get("x-operation-id");
+  const operationId = requestedOperationId && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedOperationId)
+    ? requestedOperationId
+    : null;
+  const finishOperation = () => { if (operationId) completeOperation(operationId); };
+  const reportRequestFailure = (label: string) => {
+    if (!operationId) return;
+    publishOperationEvent(operationId, { kind: "REQUEST", label, tables: [], sql: null, outcome: "FAILED", affectedRows: null });
+  };
   let input: BookingInput;
   try {
     const body: unknown = await request.json();
     if (!body || typeof body !== "object" || Array.isArray(body)) {
+      reportRequestFailure("Invalid booking request");
+      finishOperation();
       return NextResponse.json({ error: "The booking details are not valid." }, { status: 400 });
     }
     input = body as BookingInput;
   } catch {
+    reportRequestFailure("Invalid booking request");
+    finishOperation();
     return NextResponse.json({ error: "The booking details are not valid." }, { status: 400 });
   }
 
@@ -137,6 +152,8 @@ export async function POST(request: NextRequest) {
     !validText(email, 255) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
     !validText(phone, 20)
   ) {
+    reportRequestFailure("Booking validation failed");
+    finishOperation();
     return NextResponse.json({ error: "Complete the contact and seat details to continue." }, { status: 400 });
   }
 
@@ -144,8 +161,11 @@ export async function POST(request: NextRequest) {
   try {
     connection = await db.getConnection();
   } catch {
+    reportRequestFailure("Database connection unavailable");
+    finishOperation();
     return NextResponse.json({ error: "The database is currently unavailable." }, { status: 503 });
   }
+  if (operationId) connection = observeConnection(connection, operationId);
   const statements: Array<{ label: string; sql: string; affectedRows: number }> = [];
   const activity: ActivityEntry[] = [];
   const logActivity = (kind: string, label: string, tables: string[], sql: string | null, outcome = "OK", affectedRows: number | null = null) => {
@@ -365,6 +385,9 @@ export async function POST(request: NextRequest) {
       transaction: "COMMITTED",
     }, { status: 201 });
   } catch (error) {
+    if (operationId) {
+      publishOperationEvent(operationId, { kind: "BOOKING", label: "Booking operation failed", tables: [], sql: null, outcome: "FAILED", affectedRows: null });
+    }
     try {
       await connection.rollback();
     } catch {
@@ -377,5 +400,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "The booking could not be completed. No database changes were committed." }, { status: 500 });
   } finally {
     connection.release();
+    finishOperation();
   }
 }

@@ -11,6 +11,7 @@ import {
   Clock3,
   Database,
   Film,
+  GitBranch,
   LoaderCircle,
   MapPin,
   RotateCcw,
@@ -18,6 +19,10 @@ import {
   Ticket,
   X,
 } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { WorkspaceFrame } from "@/components/workspace-frame";
+import { LiveDatabaseActivity } from "@/components/live-database-activity";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
@@ -95,6 +100,7 @@ type RecordsResult = {
   limit: number;
   offset: number;
   columns: string[];
+  redactedColumns?: string[];
   primaryKey: string[];
   rows: DatabaseRecord[];
 };
@@ -183,12 +189,10 @@ function ActivityTimeline({ events }: { events: DatabaseActivityEntry[] }) {
 function Poster({ movie, large = false }: { movie: Movie; large?: boolean }) {
   return (
     <div className={`poster-art ${posterTone(movie.id)} ${large ? "poster-art-large" : ""}`}>
-      <span className="poster-orbit poster-orbit-one" />
-      <span className="poster-orbit poster-orbit-two" />
-      <span className="poster-vertical" />
-      <span className="poster-index">CINEMA / 0{movie.id}</span>
+      {movie.posterImage && <Image className="poster-image" src={movie.posterImage} alt="" fill sizes="(max-width: 700px) 54px, 64px" unoptimized />}
+      <span className="poster-index">MOVIE RECORD / {movie.id}</span>
       <span className="poster-title">{movie.title}</span>
-      <span className="poster-foot">A DATABASE PICTURE HOUSE</span>
+      <span className="poster-foot">{movie.posterImage ? "DATABASE / POSTER IMAGE" : "POSTER IMAGE NOT PROVIDED"}</span>
     </div>
   );
 }
@@ -248,6 +252,7 @@ export default function Home() {
   const [rollbackResult, setRollbackResult] = useState<RollbackDemoResult | null>(null);
   const [runningRollbackDemo, setRunningRollbackDemo] = useState(false);
   const [rollbackDemoError, setRollbackDemoError] = useState("");
+  const [activityOperationId, setActivityOperationId] = useState<string | null>(null);
   const idempotencyKey = useRef("");
 
   const selectedSeats = useMemo(
@@ -392,10 +397,12 @@ export default function Home() {
     setSubmitting(true);
     setError("");
     if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID();
+    const operationId = crypto.randomUUID();
+    setActivityOperationId(operationId);
     try {
       const response = await fetch("/api/bookings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Operation-ID": operationId },
         body: JSON.stringify({
           showtimeId: showtime.id,
           seatIds: selectedSeatIds,
@@ -469,19 +476,7 @@ export default function Home() {
   }) : [];
 
   return (
-    <main className="cinema-shell">
-      <header className="topbar">
-        <a className="brand-lockup" href="#top" aria-label="Cinema database home">
-          <span className="brand-mark"><Clapperboard size={18} /></span>
-          <span className="brand-type">cinema<span>/</span>db</span>
-        </a>
-        <nav className="top-nav" aria-label="Main navigation">
-          <a className="nav-current" href="#data-trail">Schema explorer</a>
-          <a href="#records">Live records</a>
-          <a href="#transactions">Transaction lab</a>
-        </nav>
-        <div className={`db-status ${databaseStatus === "offline" ? "db-offline" : ""}`}><span className="status-dot" /><span>{databaseStatus === "checking" ? "CHECKING MYSQL" : databaseStatus === "online" ? "MYSQL CONNECTED" : "MYSQL OFFLINE"}</span><span className="status-separator">·</span><span>LIVE DATA</span></div>
-      </header>
+    <WorkspaceFrame page="booking">
 
       <section className="hero" id="top">
         <div className="hero-grid" />
@@ -504,6 +499,28 @@ export default function Home() {
           <div className="hero-visual-note"><span className="note-line" /> A SMALL FLOW, A REAL DATABASE</div>
         </div>
         <div className="hero-bottom"><span>3-MINUTE PATH: SCHEMA → ROWS → COMMIT / ROLLBACK</span><span>DATABASE FIRST <ChevronDown size={14} /></span></div>
+      </section>
+
+      <section className="dashboard-brief" aria-label="Cinema domain and live database overview">
+        <div className="journey-story">
+          <div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> THE DOMAIN / A BOOKING IN FIVE STEPS</div>
+          <h2>From a title<br />to a <em>transaction.</em></h2>
+          <p>A cinema visit connects scheduling, inventory, customer, and payment records. Follow the journey, then inspect the keys and rows that support each step.</p>
+          <div className="journey-path" aria-label="Movie to showtime to seat to booking to payment">
+            {["Movie", "Showtime", "Seat", "Booking", "Payment"].map((entity, index) => <div className="journey-node" key={entity}><span>0{index + 1}</span><strong>{entity}</strong>{index < 4 && <ArrowRight size={13} aria-hidden="true" />}</div>)}
+          </div>
+          <div className="journey-caption"><GitBranch size={14} /> Business flow shown for orientation · inspect actual foreign keys in Schema Explorer</div>
+        </div>
+        <aside className="live-overview" aria-label="Live database overview">
+          <div className="live-overview-head"><div><span className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> DATABASE OVERVIEW</span><h3>Current snapshot</h3></div><span className={`live-badge ${databaseStatus === "online" ? "is-live" : ""}`}><i />{databaseStatus === "online" ? "CONNECTED" : databaseStatus === "checking" ? "CHECKING" : "OFFLINE"}</span></div>
+          {databaseStatus === "offline" ? <p className="overview-state">Live figures are unavailable while MySQL is disconnected.</p> : <div className="overview-metrics">
+            <div><span>SCHEMA OBJECTS</span><strong>{schemaData?.summary.objectCount ?? "—"}</strong><small>{schemaData ? `${schemaData.summary.tableCount} tables · ${schemaData.summary.viewCount} views` : loadingSchema ? "Reading schema…" : "Schema unavailable"}</small></div>
+            <div><span>TABLE ROWS</span><strong>{schemaData?.summary.tableRecordCount.toLocaleString() ?? "—"}</strong><small>{schemaData ? `Across ${schemaData.summary.tableCount} base tables` : "Live MySQL count"}</small></div>
+            <div><span>MOVIE RECORDS</span><strong>{loadingMovies ? "—" : movies.length}</strong><small>{loadingMovies ? "Reading movie table…" : error && movies.length === 0 ? "Movie query unavailable" : "Loaded from movie table"}</small></div>
+            <div><span>UPCOMING SHOWTIMES</span><strong>{loadingMovies ? "—" : movies.reduce((count, item) => count + Number(item.showtimeCount), 0)}</strong><small>{loadingMovies ? "Waiting for live query" : "Available future screenings"}</small></div>
+          </div>}
+          <a className="overview-link" href="#data-trail">Inspect live schema <ArrowRight size={14} /></a>
+        </aside>
       </section>
 
       <section className="data-section schema-section" id="data-trail">
@@ -552,12 +569,12 @@ export default function Home() {
             {recordsResult.rows.length === 0 ? <div className="records-message">No rows match this relationship in the current database.</div> : <>
               <div className="records-grid-wrap"><table className="records-grid"><thead><tr><th>Inspect</th>{recordsResult.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{recordsResult.rows.map((row, index) => {
                 const rowKey = recordsResult.primaryKey.map((column) => formatRecordValue(row[column])).join("/") || String(recordsResult.offset + index);
-                return <tr key={rowKey} className={selectedRecord === row ? "records-row-selected" : ""}><td><button className="record-inspect-button" onClick={() => setSelectedRecord(row)} aria-label={`Inspect row ${rowKey}`}>{selectedRecord === row ? "SELECTED" : "INSPECT"}</button></td>{recordsResult.columns.map((column) => <td key={column} title={formatRecordValue(row[column])}>{formatRecordValue(row[column])}</td>)}</tr>;
+                return <tr key={rowKey} className={selectedRecord === row ? "records-row-selected" : ""}><td><button className="record-inspect-button" onClick={() => setSelectedRecord(row)} aria-label={`Inspect row ${rowKey}`}>{selectedRecord === row ? "SELECTED" : "INSPECT"}</button></td>{recordsResult.columns.map((column) => { const value = recordsResult.redactedColumns?.includes(column) ? "[REDACTED]" : formatRecordValue(row[column]); return <td key={column} title={value}>{value}</td>; })}</tr>;
               })}</tbody></table></div>
               <div className="records-pagination"><span>ROWS {recordsResult.total === 0 ? 0 : recordsResult.offset + 1}–{Math.min(recordsResult.offset + recordsResult.rows.length, recordsResult.total)} OF {recordsResult.total}</span><div><button disabled={recordsResult.offset === 0 || loadingRecords} onClick={() => { setRecordOffset(Math.max(0, recordOffset - recordsResult.limit)); setSelectedRecord(null); }}>PREVIOUS</button><button disabled={recordsResult.offset + recordsResult.limit >= recordsResult.total || loadingRecords} onClick={() => { setRecordOffset(recordOffset + recordsResult.limit); setSelectedRecord(null); }}>NEXT</button></div></div>
               {selectedRecord && <div className="record-detail">
                 <div className="record-detail-heading"><div><span>SELECTED ROW / {recordTable.toUpperCase()}</span><h3>{recordsResult.primaryKey.map((column) => `${column}: ${formatRecordValue(selectedRecord[column])}`).join(" · ") || "Row details"}</h3></div><button onClick={() => setSelectedRecord(null)} aria-label="Close row details"><X size={15} /></button></div>
-                <dl className="record-fields">{recordsResult.columns.map((column) => <div key={column}><dt>{column}</dt><dd>{formatRecordValue(selectedRecord[column])}</dd></div>)}</dl>
+                <dl className="record-fields">{recordsResult.columns.map((column) => <div key={column}><dt>{column}</dt><dd>{recordsResult.redactedColumns?.includes(column) ? "[REDACTED]" : formatRecordValue(selectedRecord[column])}</dd></div>)}</dl>
                 <div className="record-links-heading">RELATED RECORDS <span>FROM LIVE FOREIGN KEYS</span></div>
                 {recordRelations.length === 0 ? <p className="record-no-links">No foreign key relationships connect this row.</p> : <div className="record-link-list">{recordRelations.map(({ relation, direction, targetTable, filter }) => <button key={`${relation.constraintName}-${direction}`} className="record-link" onClick={() => { setRecordTable(targetTable); setRecordFilter(filter); setRecordOffset(0); setSelectedRecord(null); }}><span>{direction}</span><strong>{targetTable}</strong><small>{relation.constraintName}</small><ArrowRight size={15} /></button>)}</div>}
               </div>}
@@ -572,6 +589,8 @@ export default function Home() {
           <p className="section-intro">Booking is the case study. Choose a real movie and showtime to trace writes across customer, booking, ticket, and payment.</p>
           <div className="collection-count"><span>{String(movies.length).padStart(2, "0")}</span><small>MOVIE ROWS<br />IN DATABASE</small></div>
         </div>
+
+        <LiveDatabaseActivity key={activityOperationId ?? "booking-idle"} operationId={activityOperationId} fallbackEvents={receipt?.activity ?? []} running={submitting} />
 
         {error && step !== "confirmed" && <div className="error-banner"><CircleHelp size={17} /><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
 
@@ -682,11 +701,12 @@ export default function Home() {
               <div className="confirmation-mark"><Check size={22} /></div>
               <div className="confirmation-copy"><span>TRANSACTION COMMITTED {replayed ? "· REPLAYED SAFELY" : "· LIVE MYSQL"}</span><h3>The records are <em>committed.</em></h3><p>Booking #{String(receipt.id).padStart(6, "0")} · {receipt.seats.join(", ")} · {money.format(receipt.total)}</p></div>
               <button className="secondary-button" onClick={startAgain}><RotateCcw size={14} /> Start another booking</button>
+              <Link className="database-result-link" href={`/database?bookingId=${receipt.id}`}>Inspect persisted booking rows in Database Explorer <ArrowRight size={13} /></Link>
               <div className="transaction-stats"><div><small>BOOKING</small><b>#{receipt.id}</b></div><div><small>TICKETS</small><b>{receipt.ticketIds.length}</b></div><div><small>PAYMENT</small><b>#{receipt.paymentId}</b></div><div><small>TOTAL</small><b>{money.format(receipt.total)}</b></div></div>
               <div className="sql-trace"><div className="sql-trace-heading"><div><span>THE DATA TRAIL</span><small>{receipt.transaction ?? (replayed ? "IDEMPOTENT REPLAY" : "COMMITTED")} · {statements.reduce((sum, row) => sum + row.affectedRows, 0)} ROWS AFFECTED</small></div><Database size={17} /></div><div className="trace-flow"><span>USER ACTION</span><ArrowRight size={12} /><span>POST /API/BOOKINGS</span><ArrowRight size={12} /><span>BEGIN</span><ArrowRight size={12} /><span>MYSQL</span><ArrowRight size={12} /><span>COMMIT</span><Check size={13} /></div>
                 {replayed ? <div className="replay-note"><RotateCcw size={13} /> An earlier request with this key already committed. No second booking was created.</div> : receipt.databaseState && <div className="before-after"><div><span>BEFORE · LIVE MYSQL STATE</span><strong>{receipt.databaseState.before.seats.map((seat) => `${seat.label} · ${seat.status}`).join(", ")}</strong><div className="database-row-counts">{Object.entries(receipt.databaseState.before.tableCounts).map(([table, count]) => <span key={table}>{table} <b>{count}</b></span>)}</div><small>Seat availability derived from ticket rows for showtime #{receipt.showtimeId}</small></div><ArrowRight size={16} /><div><span>AFTER · CONFIRMED MYSQL STATE</span><strong>{receipt.databaseState.after.seats.map((seat) => `${seat.label} · ${seat.status} · ticket #${seat.ticketId ?? "—"}`).join(", ")}</strong><div className="database-row-counts">{Object.entries(receipt.databaseState.after.tableCounts).map(([table, count]) => <span key={table}>{table} <b>{count}</b></span>)}</div><small>Booking #{receipt.id} · {receipt.databaseState.after.tickets.length} ticket row{receipt.databaseState.after.tickets.length === 1 ? "" : "s"} · payment #{receipt.databaseState.after.payment.paymentId} {receipt.databaseState.after.payment.status}</small></div></div>}
                 {!replayed && receipt.databaseState && <div className="affected-tables"><span>TABLES AFFECTED</span>{receipt.databaseState.affectedTables.map((table) => <b key={table}>{table}</b>)}</div>}
-                {receipt.activity?.length ? <ActivityTimeline events={receipt.activity} /> : statements.map((statement, index) => <div className="sql-row" key={`${statement.label}-${index}`}><div className="sql-row-meta"><span className="sql-step">0{index + 1}</span><b>{statement.label}</b><small>{statement.affectedRows} row{statement.affectedRows === 1 ? "" : "s"}</small></div><code>{statement.sql}</code></div>)}
+                {statements.map((statement, index) => <div className="sql-row" key={`${statement.label}-${index}`}><div className="sql-row-meta"><span className="sql-step">0{index + 1}</span><b>{statement.label}</b><small>{statement.affectedRows} row{statement.affectedRows === 1 ? "" : "s"}</small></div><code>{statement.sql}</code></div>)}
               </div>
             </div>
           )}
@@ -706,6 +726,6 @@ export default function Home() {
       </section>
 
       <footer className="footer"><a className="brand-lockup" href="#top"><span className="brand-mark"><Clapperboard size={16} /></span><span className="brand-type">cinema<span>/</span>db</span></a><span>BUILT TO MAKE THE DATABASE VISIBLE.</span><a href="#top">BACK TO TOP <ArrowRight className="back-top-icon" size={12} /></a></footer>
-    </main>
+    </WorkspaceFrame>
   );
 }
