@@ -2,6 +2,7 @@
 
 import {
   Clapperboard,
+  BarChart3,
   GitBranch,
   LayoutDashboard,
   Rows3,
@@ -9,12 +10,13 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-type WorkspacePage = "booking" | "schema" | "database";
+type WorkspacePage = "booking" | "schema" | "database" | "analytics";
 
 const navigation = [
   { id: "booking" as const, label: "Cinema Booking", href: "/", icon: LayoutDashboard },
   { id: "schema" as const, label: "Schema Design", href: "/schema", icon: GitBranch },
   { id: "database" as const, label: "Database Explorer", href: "/database", icon: Rows3 },
+  { id: "analytics" as const, label: "Analytics", href: "/analytics", icon: BarChart3 },
 ];
 
 export function WorkspaceFrame({ page, children }: { page: WorkspacePage; children: React.ReactNode }) {
@@ -42,6 +44,7 @@ export function WorkspaceFrame({ page, children }: { page: WorkspacePage; childr
             <Link className="top-nav-link" href="/#movies"><Clapperboard size={15} /><span>Now Showing</span></Link>
             <Link className="top-nav-link" href="/schema"><GitBranch size={15} /><span>Schema</span></Link>
             <Link className="top-nav-link" href="/database"><Rows3 size={15} /><span>Database Explorer</span></Link>
+            <Link className="top-nav-link" href="/analytics"><BarChart3 size={15} /><span>Analytics</span></Link>
           </nav>
         </> : <>
           <div className="header-context"><span>DATABASE FIELDNOTES</span><span>MYSQL / CINEMA BOOKING SYSTEM</span></div>

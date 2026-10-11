@@ -45,16 +45,16 @@ export async function GET() {
               COALESCE(r.Normalized_Source_Count, 0) AS normalizedReviewCount,
               r.Average_Score_100 AS averageScore100,
               (SELECT GROUP_CONCAT(g.Genre_Name ORDER BY g.Genre_Name SEPARATOR ', ')
-               FROM Movie_Genre_Details mgd JOIN Genre g ON g.Genre_ID = mgd.Genre_ID
+               FROM movie_genre_details mgd JOIN genre g ON g.Genre_ID = mgd.Genre_ID
                WHERE mgd.Movie_ID = m.Movie_ID) AS genres,
               (SELECT GROUP_CONCAT(CONCAT(p.First_Name, ' ', p.Last_Name, ' — ', mpr.Role_Type)
                  ORDER BY mpr.Role_Type, p.Last_Name, p.First_Name SEPARATOR ', ')
-               FROM Movie_Person_Role mpr JOIN Person p ON p.Person_ID = mpr.Person_ID
+               FROM movie_person_role mpr JOIN person p ON p.Person_ID = mpr.Person_ID
                WHERE mpr.Movie_ID = m.Movie_ID AND mpr.Role_Type IN ('Actor', 'Director')) AS credits
        FROM movie m
        LEFT JOIN showtime s ON s.Movie_ID = m.Movie_ID AND s.Showtime_Status = 'AVAILABLE'
          AND s.Start_Time > NOW()
-       LEFT JOIN V_Movie_Review_Summary r ON r.Movie_ID = m.Movie_ID
+       LEFT JOIN v_movie_review_summary r ON r.Movie_ID = m.Movie_ID
        GROUP BY m.Movie_ID
        ORDER BY m.Movie_ID`,
     );
@@ -68,8 +68,8 @@ export async function GET() {
                 mr.Source_URL AS sourceUrl, rs.Website_URL AS websiteUrl,
                 rs.Score_Type AS scoreType, rs.Score_Max AS scoreMax,
                 mr.Updated_At AS updatedAt
-         FROM Movie_Review mr
-         JOIN Review_Source rs ON rs.Source_ID = mr.Source_ID
+         FROM movie_review mr
+         JOIN review_source rs ON rs.Source_ID = mr.Source_ID
          WHERE mr.Movie_ID IN (?)
          ORDER BY mr.Movie_ID, rs.Source_ID, mr.Updated_At DESC, mr.Review_ID DESC`,
         [rows.map((movie) => movie.id)],
