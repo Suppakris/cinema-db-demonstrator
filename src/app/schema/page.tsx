@@ -2,7 +2,7 @@ import { SchemaWorkspace } from "@/app/schema/schema-workspace";
 import { WorkspaceFrame } from "@/components/workspace-frame";
 
 export const metadata = {
-  title: "Schema Design — cinema/db",
+  title: "Database Schema — Major Cineplex",
   description: "Explore the live MySQL schema, keys, and verified foreign-key relationships.",
 };
 

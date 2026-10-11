@@ -282,8 +282,7 @@ export function SchemaWorkspace() {
   return (
     <div className="schema-page-content">
       <section className="technical-heading">
-        <div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> DATABASE STRUCTURE / LIVE METADATA</div>
-        <div className="technical-heading-row"><div><h1>Schema <em>Design</em></h1><p>Reverse-engineered from the connected MySQL database. Select a table or foreign-key edge to inspect verified structure.</p></div>
+                <div className="technical-heading-row"><div><h1>Database Schema</h1><p>Reverse-engineered from the connected MySQL database. Select a table or foreign-key edge to inspect verified structure.</p></div>
           {schema && <div className="schema-live-stats"><span>{schema.database}</span><strong>{schema.summary.tableCount}</strong><small>BASE TABLES</small><strong>{schema.relationships.length}</strong><small>FOREIGN KEYS</small></div>}
         </div>
       </section>
@@ -352,7 +351,7 @@ export function SchemaWorkspace() {
         </div>
         <section className="schema-detail-panel" aria-live="polite">
           {selectedRelation ? <div className="schema-relation-detail">
-            <div><span className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> FOREIGN KEY / VERIFIED</span><h2>{selectedRelation.constraintName}</h2></div>
+            <div><span className="eyebrow dark-eyebrow">Foreign key</span><h2>{selectedRelation.constraintName}</h2></div>
             <div className="schema-detail-flow"><button onClick={() => selectTable(selectedRelation.fromTable)}>{selectedRelation.fromTable}<small>{selectedRelation.fromColumns.join(", ")}</small></button><ArrowRight size={18} /><strong>{selectedRelation.cardinality}<small>{selectedRelation.optional ? "OPTIONAL REFERENCE" : "REQUIRED REFERENCE"}</small></strong><ArrowRight size={18} /><button onClick={() => selectTable(selectedRelation.toTable)}>{selectedRelation.toTable}<small>{selectedRelation.toColumns.join(", ")}</small></button></div>
           </div> : selected && <TableDetails table={selected} relationships={schema.relationships.filter((relation) => relation.fromTable === selected.name || relation.toTable === selected.name)} onSelectRelation={chooseRelationship} />}
         </section>
@@ -368,7 +367,7 @@ export function SchemaWorkspace() {
 
 function TableDetails({ table, relationships, onSelectRelation }: { table: SchemaObject; relationships: SchemaRelationship[]; onSelectRelation: (relation: SchemaRelationship) => void }) {
   return <div className="table-detail-grid">
-    <div className="table-detail-intro"><span className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> SELECTED {table.type === "VIEW" ? "VIEW" : "TABLE"}</span><h2>{table.name}</h2><p>{table.columns.length} columns · {table.recordCount.toLocaleString()} live rows</p></div>
+    <div className="table-detail-intro"><span className="eyebrow dark-eyebrow">Selected {table.type === "VIEW" ? "view" : "table"}</span><h2>{table.name}</h2><p>{table.columns.length} columns · {table.recordCount.toLocaleString()} live rows</p></div>
     <div className="schema-detail-columns"><div className="schema-detail-subhead">COLUMNS <span>{table.columns.length}</span></div><div className="schema-detail-column-list">{table.columns.map((column) => <div key={column.name}><span>{column.keys.map((key) => key.kind).join(" / ") || "COLUMN"}</span><strong>{column.name}</strong><code>{column.type}</code><small>{column.nullable ? "NULLABLE" : "NOT NULL"}{column.extra ? ` · ${column.extra}` : ""}</small></div>)}</div></div>
     <div className="schema-detail-relations"><div className="schema-detail-subhead">RELATIONSHIPS <span>{relationships.length}</span></div>{relationships.length === 0 ? <p>No declared foreign keys.</p> : relationships.map((relation) => <button key={relation.constraintName} type="button" onClick={() => onSelectRelation(relation)}><span>{relation.fromTable === table.name ? "REFERENCES" : "REFERENCED BY"}</span><strong>{relation.fromTable} <ArrowRight size={12} /> {relation.toTable}</strong><small>{relation.cardinality}{relation.optional ? " · OPTIONAL" : ""} · {relation.constraintName}</small></button>)}</div>
   </div>;

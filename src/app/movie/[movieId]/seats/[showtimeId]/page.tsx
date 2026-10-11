@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { ArrowLeft, ArrowRight, Check, Clapperboard, LoaderCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LoaderCircle } from "lucide-react";
 import styles from "./seat-selection.module.css";
+import { MajorLogo } from "@/components/major-logo";
 
 type Movie = { id: number; title: string };
 type Showtime = { id: number; startsAt: string; theaterName: string; branchName: string; audioLanguage: string; subtitleLanguage: string | null };
@@ -117,18 +118,17 @@ export default function SeatSelectionPage({ params }: PageProps<"/movie/[movieId
   const rows = [...new Set(seats.map((seat) => seat.seatRow))];
   return <main className={styles.page}>
     <header className={styles.nav}>
-      <Link className={styles.brand} href="/"><span><Clapperboard size={17} /></span> cinema<b>/</b>db</Link>
+      <Link className={styles.brand} href="/" aria-label="Major Cineplex home"><MajorLogo /></Link>
       <Link className={styles.back} href={`/movie/${movieId}#showtimes`}><ArrowLeft size={14} /> BACK TO SHOWTIMES</Link>
     </header>
     {loading ? <div className={styles.state}><LoaderCircle className={styles.spin} size={18} /> Loading live seat map…</div> : error ? <div className={styles.state} role="alert">{error}</div> : movie && showtime && <>
       <section className={styles.heading}>
-        <div className={styles.eyebrow}>BOOKING CASE STUDY <span>/ SELECT YOUR SEATS</span></div>
-        <h1>Choose your seats.</h1>
+                <h1>Select seats</h1>
         <p>{movie.title} · {formatStart(showtime.startsAt, { weekday: "long", day: "numeric", month: "long" })} at {formatStart(showtime.startsAt, { hour: "2-digit", minute: "2-digit", hour12: false })}</p>
         <p>{showtime.theaterName} · {showtime.branchName} · {showtime.audioLanguage}{showtime.subtitleLanguage ? ` / SUB ${showtime.subtitleLanguage}` : ""}</p>
       </section>
-      {receipt ? <section className={styles.checkout} aria-live="polite"><div className={styles.eyebrow}>BOOKING CONFIRMED</div><h2>You’re all set.</h2><p>Booking #{receipt.id} · Payment #{receipt.paymentId}</p><p>{receipt.seats.join(", ")} · {money.format(receipt.total)}</p><Link className={styles.continue} href={`/database?bookingId=${receipt.id}`}>View booking record <ArrowRight size={14} /></Link></section> : checkout ? <section className={styles.checkout}>
-        <div className={styles.eyebrow}>CHECKOUT / CUSTOMER DETAILS</div><h2>Complete your booking.</h2>
+      {receipt ? <section className={styles.checkout} aria-live="polite"><div className={styles.eyebrow}>BOOKING CONFIRMED</div><h2>Booking confirmed</h2><p>Booking #{receipt.id} · Payment #{receipt.paymentId}</p><p>{receipt.seats.join(", ")} · {money.format(receipt.total)}</p><Link className={styles.continue} href={`/database?bookingId=${receipt.id}`}>View booking record <ArrowRight size={14} /></Link></section> : checkout ? <section className={styles.checkout}>
+        <h2>Your details</h2>
         <form className={styles.checkoutForm} onSubmit={submitBooking}>
           <label>FIRST NAME<input required maxLength={50} autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label>
           <label>LAST NAME<input required maxLength={50} autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} /></label>
@@ -173,7 +173,7 @@ export default function SeatSelectionPage({ params }: PageProps<"/movie/[movieId
           <small>Availability and prices are verified again before booking.</small>
         </aside>
       </div>}
-      <footer className={styles.footer}><Link href="/">cinema<span>/</span>db</Link><span>SELECT YOUR SEATS · LIVE DATABASE</span></footer>
+      <footer className={styles.footer}><Link href="/" aria-label="Major Cineplex home"><MajorLogo height={26} /></Link><span>Database course project · MySQL booking system</span></footer>
     </>}
   </main>;
 }

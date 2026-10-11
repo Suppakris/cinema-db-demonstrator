@@ -1,13 +1,11 @@
 "use client";
 
 import {
-  ArrowDownRight,
   ArrowRight,
   Check,
   ChevronDown,
   ChevronRight,
   CircleHelp,
-  Clapperboard,
   Clock3,
   Database,
   LoaderCircle,
@@ -17,6 +15,7 @@ import {
   Ticket,
   X,
 } from "lucide-react";
+import { MajorLogo } from "@/components/major-logo";
 import Image from "next/image";
 import Link from "next/link";
 import { WorkspaceFrame } from "@/components/workspace-frame";
@@ -143,7 +142,7 @@ function formatShowtime(value: string, options: Intl.DateTimeFormatOptions) {
 }
 
 function formatRawScore(review: MovieReview) {
-  if (review.scoreType.toUpperCase() === "PERCENT") return `${review.rawScore}%`;
+  if (review.scoreType.toUpperCase() === "PERCENT") return review.rawScore.endsWith("%") ? review.rawScore : `${review.rawScore}%`;
   const max = review.scoreMax ? Number(review.scoreMax).toString() : null;
   return max ? `${review.rawScore}/${max}` : review.rawScore;
 }
@@ -392,29 +391,33 @@ export default function Home() {
   }
 
   const hasFutureShows = movies.some((item) => Number(item.showtimeCount) > 0);
+  const featured = movies.find((item) => item.posterImage && Number(item.showtimeCount) > 0) ?? movies[0] ?? null;
   return (
     <WorkspaceFrame page="booking">
 
       <section className="cinema-hero" id="top">
-        <div className="cinema-hero-image" aria-hidden="true"><svg className="cinema-hero-art" viewBox="0 0 1600 800" preserveAspectRatio="xMidYMid slice" role="presentation">
-          <defs><linearGradient id="auditorium" x2="0" y2="1"><stop stopColor="#33483b" /><stop offset="1" stopColor="#111b17" /></linearGradient><linearGradient id="screen" x2="1" y2="1"><stop stopColor="#dfb997" /><stop offset=".55" stopColor="#a76b52" /><stop offset="1" stopColor="#465b51" /></linearGradient><radialGradient id="screenGlow"><stop stopColor="#f4d2a3" stopOpacity=".48" /><stop offset="1" stopColor="#f4d2a3" stopOpacity="0" /></radialGradient></defs>
-          <rect width="1600" height="800" fill="url(#auditorium)" /><ellipse cx="1050" cy="340" rx="700" ry="430" fill="url(#screenGlow)" /><path d="M710 110h670v385H710z" fill="#26362e" stroke="#8c7660" strokeWidth="8" /><path d="M738 138h614v329H738z" fill="url(#screen)" /><path d="M738 390c130-88 214-12 323-99 113-90 184-25 291-126v302H738z" fill="#354940" opacity=".76" /><path d="M738 420c132-62 241-24 353-100 92-63 178-22 261-58v205H738z" fill="#182720" opacity=".82" /><path d="M0 800 330 470h940l330 330z" fill="#101814" /><path d="M0 800 268 540l170 70-72 190zM1600 800l-268-260-170 70 72 190z" fill="#523932" opacity=".78" /><g fill="#0b100e"><path d="M410 800c0-128 61-197 148-197s148 69 148 197zM718 800c0-151 73-232 177-232s177 81 177 232zM1080 800c0-128 61-197 148-197s148 69 148 197z" /></g><g fill="#b0714d" opacity=".7"><circle cx="170" cy="171" r="4"/><circle cx="310" cy="258" r="3"/><circle cx="1430" cy="185" r="4"/><circle cx="1510" cy="327" r="3"/></g>
-        </svg></div>
+        {featured?.posterImage && <div className="cinema-hero-image" aria-hidden="true"><Image src={featured.posterImage} alt="" fill sizes="100vw" unoptimized priority /></div>}
         <div className="cinema-hero-shade" />
-        <div className="cinema-hero-copy"><div className="eyebrow"><span className="eyebrow-line" /> NOW SHOWING / CINEMA.DB</div><h1>Stories are<br /><em>better here.</em></h1><p>Find your next film, choose your seats, and settle in.</p><a className="cinema-hero-link" href="#movies">Explore movies <ArrowDownRight size={15} /></a></div>
-        <div className="cinema-hero-caption"><span>{databaseStatus === "online" ? "LIVE CINEMA LISTINGS" : databaseStatus === "offline" ? "LISTINGS UNAVAILABLE" : "CONNECTING TO CINEMA"}</span><span>MYSQL → API → MOVIE CARDS</span></div>
+        {featured ? <div className="cinema-hero-copy">
+          <div className="hero-featured-label">Featured</div>
+          <h1>{featured.title}</h1>
+          <div className="hero-featured-meta">{featured.ageRating && <span>{featured.ageRating}</span>}{featured.duration > 0 && <span>{featured.duration} min</span>}{featured.genres && <span>{featured.genres}</span>}</div>
+          {featured.synopsis && <p>{featured.synopsis}</p>}
+          <div className="hero-actions"><Link className="cinema-hero-link" href={`/movie/${featured.id}#showtimes`}><Ticket size={16} /> Book tickets</Link><a className="hero-secondary-link" href="#movies">All movies</a></div>
+        </div> : <div className="cinema-hero-copy">{loadingMovies ? <div className="inline-loading"><LoadingMark /> Loading movies…</div> : <h1>Now Showing</h1>}</div>}
+        {featured?.posterImage && <div className="hero-poster" aria-hidden="true"><Image src={featured.posterImage} alt="" fill sizes="300px" unoptimized priority /></div>}
       </section>
 
       <section className="collection section-wrap cinema-collection" id="movies">
-        <div className="section-heading"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> BOOKING CASE STUDY</div><h2>Now <em>showing.</em></h2></div><p className="section-intro">Explore a title to see its details and ratings, then find a screening near you.</p><div className="collection-count"><span>{String(movies.length).padStart(2, "0")}</span><small>LIVE MOVIES<br />IN DATABASE</small></div></div>
+        <div className="section-heading"><div><h2>Now Showing</h2></div><p className="section-intro">Explore a title to see its details and ratings, then find a screening near you.</p><div className="collection-count"><span>{movies.length}</span><small>movies in<br />the database</small></div></div>
         <div className="movie-insight"><Database size={14} /><span>Movie information comes from MySQL through the cinema API. Titles, posters, and scores appear only when recorded.</span></div>
         {error && movies.length === 0 && !loadingMovies && <div className="movie-reviews-empty" role="alert">{error} Please check the database connection and try again.</div>}
         <div className="movie-grid cinema-movie-grid" aria-busy={loadingMovies}>
           {loadingMovies ? <div className="loading-state"><LoadingMark /> Loading movies from the cinema…</div> : movies.length === 0 ? <div className="loading-state">No movie records are available in the database.</div> : movies.slice(0, 10).map((item) => {
             const count = Number(item.showtimeCount);
             return <Link className={`movie-card cinema-movie-card ${count === 0 ? "movie-card-no-show" : ""}`} key={item.id} href={`/movie/${item.id}`} aria-label={`Explore ${item.title}`}>
-              <div className="movie-card-poster"><Poster movie={item} /><span className="poster-card-index">NOW SHOWING</span>{count > 0 && <span className="poster-showtime-badge"><span /> {count} SHOWTIME{count === 1 ? "" : "S"}</span>}</div>
-              <div className="movie-card-info">{item.ageRating && <span className="movie-rating">{item.ageRating}</span>}<h3>{item.title}</h3><div className="movie-meta"><span>{item.genres || "Genre unavailable"}</span><span className="meta-dot">·</span><span>{item.releaseDate ? item.releaseDate.slice(0, 4) : "Release year unavailable"}</span></div>{item.reviews.some((review) => review.rawScore.trim() !== "" && Number.isFinite(Number(review.rawScore))) && <div className="movie-card-review-lines">{item.reviews.filter((review) => review.rawScore.trim() !== "" && Number.isFinite(Number(review.rawScore))).slice(0, 2).map((review) => <span key={review.reviewId}><b>{review.sourceName}</b><strong>{formatRawScore(review)}</strong></span>)}</div>}<span className="movie-explore">EXPLORE FILM <ArrowRight size={12} /></span></div>
+              <div className="movie-card-poster"><Poster movie={item} />{count > 0 && <span className="poster-showtime-badge"><span /> {count} showtime{count === 1 ? "" : "s"}</span>}</div>
+              <div className="movie-card-info">{item.ageRating && <span className="movie-rating">{item.ageRating}</span>}<h3>{item.title}</h3><div className="movie-meta"><span>{item.genres || "Genre unavailable"}</span><span className="meta-dot">·</span><span>{item.releaseDate ? item.releaseDate.slice(0, 4) : "Release year unavailable"}</span></div>{item.reviews.some((review) => review.rawScore.trim() !== "" && Number.isFinite(Number(review.rawScore))) && <div className="movie-card-review-lines">{item.reviews.filter((review) => review.rawScore.trim() !== "" && Number.isFinite(Number(review.rawScore))).slice(0, 2).map((review) => <span key={review.reviewId}><b>{review.sourceName}</b><strong>{formatRawScore(review)}</strong></span>)}</div>}</div>
             </Link>;
           })}
         </div>
@@ -426,7 +429,7 @@ export default function Home() {
 
         <div className="selection-panel">
           <div className="selection-topline"><span><span className="selection-dot" /> BOOKING WORKFLOW</span><span>CASE STUDY / SHOWTIME → SEAT → TRANSACTION</span></div>
-          <div className="selection-title-row"><div><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> {movie?.title ?? "CHOOSE A FILM"}</div><h2>Find your showtime.</h2></div><div className="flow-steps"><StepLabel number="01" label="FILM" active={step === "discover"} complete={Boolean(showtime)} /><span className="flow-connector" /><StepLabel number="02" label="SEATS" active={step === "seats"} complete={step === "details" || step === "confirmed"} /><span className="flow-connector" /><StepLabel number="03" label="DETAILS" active={step === "details"} complete={step === "confirmed"} /><span className="flow-connector" /><StepLabel number="04" label="DONE" active={step === "confirmed"} complete={step === "confirmed"} /></div></div>
+          <div className="selection-title-row"><div><div className="eyebrow dark-eyebrow">{movie?.title ?? "No movie selected"}</div><h2>Showtimes</h2></div><div className="flow-steps"><StepLabel number="01" label="FILM" active={step === "discover"} complete={Boolean(showtime)} /><span className="flow-connector" /><StepLabel number="02" label="SEATS" active={step === "seats"} complete={step === "details" || step === "confirmed"} /><span className="flow-connector" /><StepLabel number="03" label="DETAILS" active={step === "details"} complete={step === "confirmed"} /><span className="flow-connector" /><StepLabel number="04" label="DONE" active={step === "confirmed"} complete={step === "confirmed"} /></div></div>
 
           {movie && <details className="booking-learning"><summary>How showtimes are found</summary><p>The cinema API filters available future screenings by this Movie_ID and joins the matching theater, branch, and language records.</p></details>}
 
@@ -491,7 +494,7 @@ export default function Home() {
               {step === "details" && (
                 <div className="details-backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setStep("seats"); }}>
                   <form className="details-card" onSubmit={submitBooking}>
-                    <div className="details-heading"><div><span className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> CHECKOUT / 03</span><h3>One last thing.</h3></div><button type="button" className="icon-button" onClick={() => setStep("seats")} aria-label="Back to seats"><X size={17} /></button></div>
+                    <div className="details-heading"><div><span className="eyebrow dark-eyebrow">Checkout</span><h3>Your details</h3></div><button type="button" className="icon-button" onClick={() => setStep("seats")} aria-label="Back to seats"><X size={17} /></button></div>
                     <p className="details-copy">Add a contact for the ticket record. Payment is simulated for this database demonstration.</p>
                     <div className="form-grid"><label>FIRST NAME<input required maxLength={50} autoComplete="given-name" value={firstName} onChange={(event) => setFirstName(event.target.value)} placeholder="Alex" /></label><label>LAST NAME<input required maxLength={50} autoComplete="family-name" value={lastName} onChange={(event) => setLastName(event.target.value)} placeholder="Morgan" /></label></div>
                     <label className="form-field">EMAIL<input required type="email" maxLength={255} autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="alex@example.com" /></label>
@@ -510,7 +513,7 @@ export default function Home() {
           {receipt && step === "confirmed" && (
             <div className="confirmation-panel">
               <div className="confirmation-mark"><Check size={22} /></div>
-              <div className="confirmation-copy"><span>TRANSACTION COMMITTED {replayed ? "· REPLAYED SAFELY" : "· LIVE MYSQL"}</span><h3>The records are <em>committed.</em></h3><p>Booking #{String(receipt.id).padStart(6, "0")} · {receipt.seats.join(", ")} · {money.format(receipt.total)}</p></div>
+              <div className="confirmation-copy"><span>TRANSACTION COMMITTED {replayed ? "· REPLAYED SAFELY" : "· LIVE MYSQL"}</span><h3>Booking confirmed</h3><p>Booking #{String(receipt.id).padStart(6, "0")} · {receipt.seats.join(", ")} · {money.format(receipt.total)}</p></div>
               <button className="secondary-button" onClick={startAgain}><RotateCcw size={14} /> Start another booking</button>
               <Link className="database-result-link" href={`/database?bookingId=${receipt.id}`}>Inspect persisted booking rows in Database Explorer <ArrowRight size={13} /></Link>
               <a className="database-result-link" href="#transactions">Explore the Transaction Lab <ArrowRight size={13} /></a>
@@ -524,7 +527,7 @@ export default function Home() {
           )}
         </div>
         <div className="rollback-demo-panel" id="transactions">
-          <div className="rollback-demo-copy"><div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> 04 / TRANSACTION LAB</div><h3>See a rollback.<br /><em>Keep the data consistent.</em></h3><p>This controlled run inserts a temporary customer and booking, then deliberately violates the payment method foreign key. MySQL rolls back the transaction; no demo records should remain.</p></div>
+          <div className="rollback-demo-copy"><div className="eyebrow dark-eyebrow">Transaction demo</div><h3>Rollback on failure</h3><p>This controlled run inserts a temporary customer and booking, then deliberately violates the payment method foreign key. MySQL rolls back the transaction; no demo records should remain.</p></div>
           <div className="rollback-demo-action"><span>BEGIN → INSERT CUSTOMER → INSERT BOOKING → PAYMENT FK FAIL → ROLLBACK</span><button className="secondary-button" onClick={() => void runRollbackDemo()} disabled={runningRollbackDemo}><RotateCcw size={14} /> {runningRollbackDemo ? "Running rollback…" : "Run rollback demonstration"}</button></div>
           {rollbackDemoError && <div className="rollback-demo-error" role="alert"><CircleHelp size={15} /> {rollbackDemoError}</div>}
           {rollbackResult && <div className="rollback-result" aria-live="polite">
@@ -534,10 +537,10 @@ export default function Home() {
             <ActivityTimeline events={rollbackResult.activity} />
           </div>}
         </div>
-        <div className="collection-footnote"><span>MAKE IT A MOVIE NIGHT.</span><span>CHOOSE A FILM · FIND A SHOWTIME · PICK YOUR SEATS</span><a href="#top">BACK TO TOP <ChevronDown size={13} /></a></div>
+        
       </section>
 
-      <footer className="footer"><a className="brand-lockup" href="#top"><span className="brand-mark"><Clapperboard size={16} /></span><span className="brand-type">cinema<span>/</span>db</span></a><span>YOUR NEXT SHOW STARTS HERE.</span><a href="#top">BACK TO TOP <ArrowRight className="back-top-icon" size={12} /></a></footer>
+      <footer className="footer"><a className="brand-lockup" href="#top"><MajorLogo height={26} /></a><span>Database course project · MySQL booking system</span><a href="#top">BACK TO TOP <ArrowRight className="back-top-icon" size={12} /></a></footer>
     </WorkspaceFrame>
   );
 }
