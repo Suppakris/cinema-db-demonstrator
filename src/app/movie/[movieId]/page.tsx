@@ -11,7 +11,7 @@ type Movie = { id: number; title: string; posterImage: string | null; synopsis: 
 type Showtime = { id: number; startsAt: string; status: string; theaterName: string; branchName: string; audioLanguage: string; subtitleLanguage: string | null; seatCount: number; bookedCount: number };
 
 function score(review: Review) {
-  if (review.scoreType.toUpperCase() === "PERCENT") return `${review.rawScore}%`;
+  if (review.scoreType.toUpperCase() === "PERCENT") return review.rawScore.endsWith("%") ? review.rawScore : `${review.rawScore}%`;
   return review.scoreMax ? `${review.rawScore}/${Number(review.scoreMax)}` : review.rawScore;
 }
 
@@ -74,7 +74,7 @@ export default function MovieDetailsPage({ params }: PageProps<"/movie/[movieId]
         <div className={styles.copy}>
           <div className={styles.eyebrow}>MOVIE DETAILS <span>/ MOVIE_ID {movie.id}</span></div>
           <h1>{movie.title}</h1>
-          <div className={styles.metadata}>{movie.releaseDate ? new Date(`${movie.releaseDate}T00:00:00`).getFullYear() : null}{movie.ageRating && <span>{movie.ageRating}</span>}{movie.duration > 0 && <span>{movie.duration} MIN</span>}{movie.genres && <span>{movie.genres}</span>}</div>
+          <div className={styles.metadata}>{movie.releaseDate ? movie.releaseDate.slice(0, 4) : null}{movie.ageRating && <span>{movie.ageRating}</span>}{movie.duration > 0 && <span>{movie.duration} MIN</span>}{movie.genres && <span>{movie.genres}</span>}</div>
           <p className={styles.synopsis}>{movie.synopsis || "No synopsis is recorded for this movie."}</p>
           {movie.credits && <p className={styles.credits}><b>CAST & CREW</b>{movie.credits}</p>}
           <Link className={styles.cta} href="#showtimes">Find Your Showtime <ArrowRight size={15} /></Link>
