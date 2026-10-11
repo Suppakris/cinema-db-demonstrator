@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Database, LoaderCircle, RefreshCw, Search } from
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SchemaData } from "@/lib/schema-types";
+import { MajorLogo } from "@/components/major-logo";
 
 type RecordRow = Record<string, unknown>;
 type TableRows = { table: string; total: number; limit: number; offset: number; columns: string[]; redactedColumns: string[]; primaryKey: string[]; rows: RecordRow[] };
@@ -94,13 +95,12 @@ export function DatabaseWorkspace({ initialBookingId = null }: { initialBookingI
   return (
     <div className="database-page-content">
       <section className="technical-heading">
-        <div className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> DATABASE EXPLORER / READ ONLY</div>
-        <div className="technical-heading-row"><div><h1>Database <em>Explorer</em></h1><p>Inspect the connected database with bounded, read-only table queries. Sensitive column values are redacted before they reach this page.</p></div>
+                <div className="technical-heading-row"><div><h1>Database Explorer</h1><p>Inspect the connected database with bounded, read-only table queries. Sensitive column values are redacted before they reach this page.</p></div>
           {schema && <div className="schema-live-stats"><span>{schema.database}</span><strong>{schema.summary.tableCount}</strong><small>BASE TABLES</small><strong>{schema.summary.tableRecordCount.toLocaleString()}</strong><small>LIVE ROWS</small></div>}
         </div>
       </section>
       <section className="recent-bookings-panel" aria-label="Recent committed booking records">
-        <div className="recent-bookings-heading"><div><span className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> PERSISTED DATA / RECENT BOOKINGS</span><h2>{queryBookingId ? `Booking #${queryBookingId}` : "Recent database changes"}</h2></div><button type="button" onClick={() => { setLoadingRecent(true); setRecentError(""); void loadRecent(); }} disabled={loadingRecent}><RefreshCw size={14} className={loadingRecent ? "loading-spin" : ""} /> Refresh</button></div>
+        <div className="recent-bookings-heading"><div><h2>{queryBookingId ? `Booking #${queryBookingId}` : "Recent bookings"}</h2></div><button type="button" onClick={() => { setLoadingRecent(true); setRecentError(""); void loadRecent(); }} disabled={loadingRecent}><RefreshCw size={14} className={loadingRecent ? "loading-spin" : ""} /> Refresh</button></div>
         {loadingRecent ? <p className="database-state"><LoaderCircle size={15} className="loading-spin" /> Reading recent booking records…</p> : recentError ? <p className="database-state database-state-error" role="alert">{recentError}</p> : recentBookings.length === 0 ? <p className="database-state">No matching booking rows were found in the connected database.</p> : <div className="recent-bookings-list">{recentBookings.map((booking) => <article key={booking.bookingId} className={queryBookingId === booking.bookingId ? "recent-booking focused" : "recent-booking"}><div><span>BOOKING</span><strong>#{booking.bookingId}</strong><small>{new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(new Date(booking.createdAt))}</small></div><div><span>SHOWTIME</span><strong>#{booking.showtimeId}</strong></div><div><span>TICKETS</span><strong>{booking.ticketCount}</strong></div><div><span>TOTAL</span><strong>{currency.format(booking.total)}</strong></div><div><span>BOOKING STATUS</span><strong>{booking.bookingStatus}</strong><small>{booking.paymentStatus ? `DEMO PAYMENT ROW · ${booking.paymentStatus}` : "NO PAYMENT ROW"}</small></div></article>)}</div>}
         <p className="recent-bookings-note">These rows are queried from MySQL after commit. Payment status is a local demonstration record; no payment provider is contacted.</p>
       </section>
@@ -112,7 +112,7 @@ export function DatabaseWorkspace({ initialBookingId = null }: { initialBookingI
           {loadingSchema ? <p className="database-state"><LoaderCircle size={14} className="loading-spin" /> Loading tables…</p> : schemaError ? <p className="database-state database-state-error">{schemaError}</p> : <div className="database-table-list">{filteredTables.map((table) => <button key={table.name} className={selectedTable === table.name ? "selected" : ""} onClick={() => { setSelectedTable(table.name); setOffset(0); setLoadingRows(true); setRowsError(""); }}><span>{table.name}</span><small>{table.recordCount.toLocaleString()} ROWS</small></button>)}</div>}
         </aside>
         <section className="database-table-view" aria-label="Selected table contents">
-          <div className="database-table-heading"><div><span className="eyebrow dark-eyebrow"><span className="eyebrow-line" /> LIVE MYSQL TABLE</span><h2>{selectedTable || "Select a table"}</h2><p>{selectedObject ? `${selectedObject.columns.length} columns · ${selectedObject.recordCount.toLocaleString()} current rows` : "Choose a base table from the index."}</p></div><button type="button" onClick={() => { setLoadingRows(true); setRowsError(""); void loadRows(); }} disabled={loadingRows || !selectedTable}><RefreshCw size={14} className={loadingRows ? "loading-spin" : ""} /> Reload</button></div>
+          <div className="database-table-heading"><div><h2>{selectedTable || "Select a table"}</h2><p>{selectedObject ? `${selectedObject.columns.length} columns · ${selectedObject.recordCount.toLocaleString()} current rows` : "Choose a base table from the index."}</p></div><button type="button" onClick={() => { setLoadingRows(true); setRowsError(""); void loadRows(); }} disabled={loadingRows || !selectedTable}><RefreshCw size={14} className={loadingRows ? "loading-spin" : ""} /> Reload</button></div>
           {selectedObject && <div className="database-column-strip" aria-label="Table columns">{selectedObject.columns.map((column) => <span key={column.name}><b>{column.keys.map((key) => key.kind).join("/") || "COL"}</b>{column.name}<small>{column.type}</small></span>)}</div>}
           <div className="database-query-line"><code>LIVE QUERY RESULT · PAGE SIZE 25 · OFFSET {offset}</code><span><Database size={12} /> READ ONLY</span></div>
           {rowsError ? <p className="database-state database-state-error" role="alert">{rowsError}</p> : loadingRows ? <p className="database-state"><LoaderCircle size={15} className="loading-spin" /> Reading live rows…</p> : rowsResult?.rows.length === 0 ? <p className="database-state">This table has no rows in the current database.</p> : rowsResult && <>
@@ -122,7 +122,7 @@ export function DatabaseWorkspace({ initialBookingId = null }: { initialBookingI
           </>}
         </section>
       </div>
-      <footer className="footer"><Link className="brand-lockup" href="/"><span className="brand-mark"><Database size={15} /></span><span className="brand-type">cinema<span>/</span>db</span></Link><span>READ ONLY · LIVE MYSQL CONTENT</span><Link href="/schema">OPEN SCHEMA DESIGN <ArrowRight className="back-top-icon" size={12} /></Link></footer>
+      <footer className="footer"><Link className="brand-lockup" href="/"><MajorLogo height={26} /></Link><span>Read-only view of the live MySQL database</span><Link href="/schema">OPEN SCHEMA <ArrowRight className="back-top-icon" size={12} /></Link></footer>
     </div>
   );
 }

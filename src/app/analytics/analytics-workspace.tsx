@@ -86,13 +86,13 @@ export function AnalyticsWorkspace() {
 
   return <div className={styles.page}>
     <section className={styles.intro}>
-      <div><p className={styles.eyebrow}><span /> LIVE DATABASE / BUSINESS INSIGHTS</p><h1>Analytics <em>Studio</em></h1><p className={styles.lede}>Explore the cinema database views. Each chart is paired with the SQL that produces its results.</p><p className={styles.dataNote}>Movie trends use seven real film titles; IMDb and Rotten Tomatoes scores were checked on Oct 11, 2026. Booking history is synthetic demo activity tagged DEMO_ANALYTICS.</p></div>
+      <div><h1>Analytics</h1><p className={styles.lede}>Explore the cinema database views. Each chart is paired with the SQL that produces its results.</p><p className={styles.dataNote}>Movie trends use seven real film titles; IMDb and Rotten Tomatoes scores were checked on Oct 11, 2026. Booking history is synthetic demo activity tagged DEMO_ANALYTICS.</p></div>
       <div className={styles.summary}><span>MYSQL VIEWS</span><strong>05</strong><small>READ ONLY</small></div>
     </section>
     <nav className={styles.tabs} role="tablist" aria-label="Analytics views">
       {ids.map((id) => <button key={id} type="button" role="tab" aria-selected={active === id} className={active === id ? styles.activeTab : ""} onClick={() => setActive(id)}>{analyticsViews[id].label}</button>)}
     </nav>
-    <section className={styles.heading}><div><p className={styles.eyebrow}><span /> {view.label.toUpperCase()}</p><h2>{view.label}</h2><p>{view.description}</p></div><div className={styles.rowCount}>{loading ? "LOADING" : `${rows.length} ROWS`}</div></section>
+    <section className={styles.heading}><div><h2>{view.label}</h2><p>{view.description}</p></div><div className={styles.rowCount}>{loading ? "LOADING" : `${rows.length} ROWS`}</div></section>
     <div className={styles.grid}>
       <section className={styles.panel} aria-label={`${view.label} chart`}>
         <div className={styles.panelHead}><div><p className={styles.eyebrow}>VISUAL SUMMARY</p><h3>{active === "bookings" ? "Sales over time" : active === "memberships" ? "Usage by membership tier" : active === "theaters" ? "Tickets by theater type" : active === "movies" ? "Movie ticket trend" : "Average score by movie"}</h3></div><span>{active === "reviews" ? "SCORE / 100" : active === "memberships" ? membershipMetric === "revenue" ? "THB" : "TICKETS" : active === "bookings" ? "THB" : "TICKETS"}</span></div>

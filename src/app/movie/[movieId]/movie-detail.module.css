@@ -79,3 +79,6 @@
 .cta:hover, .seatLink:hover { background: var(--brand-hover); }
 .art { border-radius: 8px; box-shadow: 0 30px 60px rgba(0, 0, 0, .7); }
 .sourceScore { color: var(--text) !important; font-weight: 800 !important; }
+.cta, .seatLink, .metadata, .back, .credits b { font-family: var(--sans); letter-spacing: .01em; }
+.cta, .seatLink { font-size: 14px; }
+.metadata span { border-radius: 3px; }

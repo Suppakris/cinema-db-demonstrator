@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "cinema/db — Cinema Database Fieldnotes",
-  description: "Explore the live cinema schema, inspect MySQL records, and follow booking and rollback transactions.",
+  title: "Major Cineplex — Movie Booking",
+  description: "Book movie tickets at Major Cineplex and inspect the MySQL database behind every booking.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

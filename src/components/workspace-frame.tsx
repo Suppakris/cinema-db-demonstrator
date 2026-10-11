@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Rows3,
 } from "lucide-react";
+import { MajorLogo } from "@/components/major-logo";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -14,7 +15,7 @@ type WorkspacePage = "booking" | "schema" | "database" | "analytics";
 
 const navigation = [
   { id: "booking" as const, label: "Cinema Booking", href: "/", icon: LayoutDashboard },
-  { id: "schema" as const, label: "Schema Design", href: "/schema", icon: GitBranch },
+  { id: "schema" as const, label: "Schema", href: "/schema", icon: GitBranch },
   { id: "database" as const, label: "Database Explorer", href: "/database", icon: Rows3 },
   { id: "analytics" as const, label: "Analytics", href: "/analytics", icon: BarChart3 },
 ];
@@ -34,12 +35,8 @@ export function WorkspaceFrame({ page, children }: { page: WorkspacePage; childr
   return (
     <div className={`cinema-shell ${page === "booking" ? "cinema-shell-home" : ""}`}>
       <header className="topbar">
-        <Link className="brand-lockup" href="/" aria-label="Cinema database home">
-          <span className="brand-mark"><Clapperboard size={18} /></span>
-          <span className="brand-type">cinema<span>/</span>db</span>
-        </Link>
+        <Link className="brand-lockup" href="/" aria-label="Major Cineplex home"><MajorLogo /></Link>
         {page === "booking" ? <>
-          <div className="header-context"><span>YOUR CINEMA</span><span>FILMS · SHOWTIMES · SEATS</span></div>
           <nav className="top-nav" aria-label="Main navigation">
             <Link className="top-nav-link" href="/#movies"><Clapperboard size={15} /><span>Now Showing</span></Link>
             <Link className="top-nav-link" href="/schema"><GitBranch size={15} /><span>Schema</span></Link>
@@ -47,7 +44,6 @@ export function WorkspaceFrame({ page, children }: { page: WorkspacePage; childr
             <Link className="top-nav-link" href="/analytics"><BarChart3 size={15} /><span>Analytics</span></Link>
           </nav>
         </> : <>
-          <div className="header-context"><span>DATABASE FIELDNOTES</span><span>MYSQL / CINEMA BOOKING SYSTEM</span></div>
           <nav className="top-nav" aria-label="Main navigation">
             {navigation.map(({ id, label, href, icon: Icon }) => (
               <Link key={id} className="top-nav-link" href={href} aria-current={page === id ? "page" : undefined}>

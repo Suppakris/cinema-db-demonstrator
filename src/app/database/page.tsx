@@ -2,7 +2,7 @@ import { DatabaseWorkspace } from "@/app/database/database-workspace";
 import { WorkspaceFrame } from "@/components/workspace-frame";
 
 export const metadata = {
-  title: "Database Explorer — cinema/db",
+  title: "Database Explorer — Major Cineplex",
   description: "Inspect live MySQL table structure and safely paginated records.",
 };
 

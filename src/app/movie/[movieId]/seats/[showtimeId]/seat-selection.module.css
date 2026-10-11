@@ -135,3 +135,4 @@
 .continue, .checkoutForm .continue { background: var(--brand); color: #fff; font-weight: 700; border-radius: 4px; }
 .continue:hover:not(:disabled), .checkoutForm .continue:hover:not(:disabled) { background: var(--brand-hover); }
 .continue.disabled, .continue:disabled { background: var(--surface-4); color: var(--muted); opacity: 1; }
+.continue, .checkoutForm .continue, .back { font-family: var(--sans); font-size: 14px; letter-spacing: .01em; }

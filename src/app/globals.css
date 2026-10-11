@@ -1341,3 +1341,32 @@ body, .cinema-shell, .workspace-main { background: var(--surface); color: var(--
 .footer { background: var(--bg-deep); border-top: 1px solid var(--line); }
 input::placeholder { color: var(--muted-2); }
 select option { background: var(--surface-2); color: var(--text); }
+
+/* Featured-movie hero (real content from /api/movies) */
+.cinema-hero { min-height: min(620px, 78vh); }
+.cinema-hero-image img { object-fit: cover; object-position: center 25%; opacity: .45; filter: blur(18px) saturate(1.1); transform: scale(1.15); }
+.cinema-hero-copy { width: min(640px, 58%); padding: 72px 0 80px; }
+.cinema-hero-copy h1 { margin: 10px 0 14px; font-size: clamp(40px, 5.6vw, 76px); line-height: .98; }
+.cinema-hero-copy p { max-width: 520px; font-size: 15px; line-height: 1.65; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hero-featured-label { display: inline-block; padding: 4px 9px; border-radius: 3px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.hero-featured-meta { display: flex; flex-wrap: wrap; gap: 8px; color: var(--text-2); font-size: 13px; }
+.hero-featured-meta span + span::before { content: "·"; margin-right: 8px; color: var(--muted-2); }
+.hero-actions { display: flex; align-items: center; gap: 18px; margin-top: 26px; }
+.cinema-hero-link { margin-top: 0; gap: 10px; padding: 14px 22px; font-size: 14px; letter-spacing: 0; }
+.hero-secondary-link { color: var(--text); font-size: 14px; font-weight: 600; border-bottom: 1px solid var(--line-strong); padding-bottom: 3px; }
+.hero-secondary-link:hover { border-color: var(--text); }
+.hero-poster { position: absolute; right: clamp(25px, 9vw, 150px); top: 50%; width: clamp(200px, 21vw, 300px); aspect-ratio: 2 / 3; transform: translateY(-50%); border-radius: 8px; overflow: hidden; box-shadow: 0 30px 70px rgba(0, 0, 0, .7); }
+.hero-poster img { object-fit: cover; }
+.section-heading h2 { font-size: clamp(34px, 3.6vw, 48px) !important; }
+@media (max-width: 760px) {
+  .hero-poster { display: none; }
+  .cinema-hero-copy { width: auto; }
+}
+
+/* Calmer labels: sentence case, no tracked-out micro caps on headings */
+.eyebrow, .dark-eyebrow { letter-spacing: .02em; font-weight: 600; text-transform: none; }
+.eyebrow-line { display: none; }
+.collection-count small { letter-spacing: .02em; }
+.poster-showtime-badge { letter-spacing: .01em; font-size: 11px; }
+.collection-count small { font-size: 12px; text-transform: none; }
+.collection-count small { white-space: nowrap; }
