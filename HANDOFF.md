@@ -2,34 +2,34 @@
 
 ## Resume point — 2026-10-11
 
-The latest task added the Analytics page and improved its local demo data. This section is the current state and supersedes older notes below where they conflict.
+The latest task added the Analytics page, updated the named-film posters, and synchronized the demo seed to the production Aiven database. This section is the current state and supersedes older notes below where they conflict.
 
 ### Completed in the latest session
 
 - Added `/analytics` with five database views: booking statistics, membership usage, theater type sales, monthly movie ranking, and movie review summary. Each chart shows the SQL that produces its data.
 - Added `src/app/api/analytics/[view]/route.ts`, `src/lib/analytics-views.ts`, and the Analytics navigation entry in `src/components/workspace-frame.tsx`.
-- Added `.db-seed.cjs`, a repeatable synthetic activity seed. It was previously applied to the local database: 154 showtimes, 828 bookings, 3,573 tickets, 127 M Pass redemption rows, and 64 example.test customers. It tags demo bookings with `Channel_Type=DEMO_ANALYTICS`. A fresh dry run reported zero rows to add.
-- Added `.db-real-movies.cjs` and applied seven real film catalog entries and 14 IMDb/Rotten Tomatoes score snapshots to the local database: Dune: Part Two, Oppenheimer, Barbie, Spider-Man: Across the Spider-Verse, Godzilla Minus One, Top Gun: Maverick, and How to Make Millions Before Grandma Dies. It stores source URLs. The scores were checked on 2026-10-11 and are snapshots, not a live feed.
+- Added `.db-seed.cjs`, a repeatable synthetic activity seed. It has been applied to both local MySQL and production Aiven: 154 showtimes, 828 bookings, 3,573 tickets, 127 M Pass redemption rows, and 64 example.test customers. It tags demo bookings with `Channel_Type=DEMO_ANALYTICS`.
+- Added `.db-real-movies.cjs` and applied seven real film catalog entries, poster URLs, and 14 IMDb/Rotten Tomatoes score snapshots to local MySQL and production Aiven: Dune: Part Two, Oppenheimer, Barbie, Spider-Man: Across the Spider-Verse, Godzilla Minus One, Top Gun: Maverick, and How to Make Millions Before Grandma Dies. It stores source URLs. The scores were checked on 2026-10-11 and are snapshots, not a live feed.
 - Updated the monthly ranking and review chart queries to exclude the remaining `Demo Movie` placeholders. The booking, membership, and theater charts still use synthetic demo transactions, called out on the page.
 - Added [the analytics data audit](docs/analytics-data-audit.md), which explains the seeds and prior relationship checks.
+- Pushed commit `da9522f` to GitHub `master` and deployed the final app to Vercel. Production health reports the Aiven database connected; `/api/movies` returns all seven real titles with posters and `/api/analytics/bookings` returns seeded data.
+- The temporary authenticated production-seed route and its one-time token were removed after the Aiven update. They are not present in the final deployment.
 
 ### Current data status and constraints
 
-- `.env.local` points to the local MySQL database `cinema_db` (`DB_HOST=localhost`). Neither seed was copied to Aiven; nothing has been deployed.
-- Local catalog now has 60 movies total: 7 real entries and 53 placeholders. The language table still has 50 `Demo Language` placeholders. All seven theaters remain at Ratchayothin; six other branches have no theaters.
+- `.env.local` still points to the local MySQL database `cinema_db` (`DB_HOST=localhost`). Production uses the configured Aiven environment. Both databases have 60 movies total: 7 real entries and 53 placeholders. The language table still has 50 `Demo Language` placeholders. All seven theaters remain at Ratchayothin; six other branches have no theaters.
 - The audit found 20 pre-existing M Pass redemption rows without a matching zero-price ticket. They were not changed. The new seed creates matching tickets for its own redemptions.
 - Existing booking/ticket/payment checks passed before the real-film update. No booking, showtime, ticket, payment, or catalog relationship rows were changed by the real-film update.
-- `.db-real-movies.cjs` defaults to rollback-only preview; `--apply` writes. `--audit` prints the seven source-linked film review rows. The script restricts itself to localhost and expected demo placeholders. `--refresh --apply` can update the seven already named entries from the script if corrected facts are needed.
+- `.db-real-movies.cjs` defaults to rollback-only preview; `--apply` writes. `--audit` prints the seven poster and source-linked film review rows. It restricts local mode to localhost and checks the expected demo placeholders. `--refresh --apply` can update the seven already named entries if corrected facts are needed.
 - `.db-seed.cjs` defaults to rollback-only preview; `--apply` writes. It is idempotent.
 
 ### Resume here
 
-1. Start the local app with `pnpm dev` and open `/analytics` to review the charts and SQL query panels.
-2. If a chart cannot load, confirm `.env.local` still points to local MySQL and inspect the route response at `/api/analytics/<view>`; do not change Aiven unless explicitly requested.
-3. If the page looks right, decide whether to add more verified films/replace remaining placeholders. Keep transaction history labeled synthetic unless real transaction records are actually loaded.
-4. Build/lint and deploy only when ready; no build, tests, or deployment were run as part of the latest data update.
+1. Review the production site and `/analytics`; the final deployment passed `pnpm build` and the production health endpoint reports Aiven connected.
+2. If a chart cannot load, inspect the response at `/api/analytics/<view>` and verify the Vercel production DB environment still targets Aiven.
+3. Decide whether to add more verified films or replace remaining placeholders. Keep the generated transaction history labeled synthetic unless real transaction records are loaded.
 
-Current uncommitted files also include older changes to `.gitignore`, `package.json`, and `src/app/api/movies/route.ts`; preserve them. `git diff --check` passed after the latest changes (Git printed existing line-ending warnings).
+The analytics, movie poster, and seed changes were pushed to GitHub `master`. `git diff --check` passed (Git printed existing line-ending warnings).
 
 ## System goal
 
