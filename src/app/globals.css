@@ -1131,8 +1131,49 @@ body, .cinema-shell, .workspace-main, .footer { background: #fff; color: #171717
 .movie-reviews-foot > span { color: #777; font: 10px var(--font-geist-mono), monospace; letter-spacing: .08em; }
 .movie-reviews-foot code { color: #333; font: 10px var(--font-geist-mono), monospace; }
 .movie-reviews-foot p { flex: 1 1 100%; margin: 0; color: #777; font-size: 10px; }
+
+/* Keep supporting copy readable across cinema, booking, and database screens. */
+.eyebrow, .dark-eyebrow, .db-status, .top-nav { font-size: 11px; }
+.section-intro, .hero-description, .details-copy, .table-detail-intro p,
+.schema-detail-relations > p, .schema-cross-links > p, .database-table-heading p,
+.redaction-note, .recent-bookings-note { color: #625d5e; font-size: 13px; }
+.collection-count small, .movie-meta, .movie-card-review-lines,
+.showtime-date small, .showtime-time small, .showtime-place small,
+.showtime-seats small, .seat-map-guide, .screen-label, .seat-legend,
+.summary-copy > span, .summary-copy small, .summary-note, .details-card label,
+.form-error, .checkout-footnote, .confirmation-copy p, .selection-topline,
+.schema-live-stats span, .schema-live-stats small, .schema-zoom-controls > span,
+.schema-table-rail-head, .schema-table-rail-head span,
+.schema-table-index button small, .schema-detail-subhead,
+.schema-detail-column-list small, .schema-detail-relations > button > span,
+.schema-detail-relations > button > small, .schema-detail-flow > button small,
+.schema-detail-flow > strong small, .recent-booking > div > span,
+.recent-booking > div > small, .database-table-rail-head,
+.database-table-list button small, .database-column-strip small,
+.database-query-line > span, .database-pagination,
+.database-record-grid th, .redacted-value, .erd-help,
+.movie-reviews-foot p, .movie-review-row small,
+.movie-review-normalized, .movie-review-no-link { font-size: 11px; }
+.movie-meta, .collection-count small, .showtime-date small,
+.showtime-time small, .showtime-place small, .showtime-seats small,
+.seat-map-guide, .screen-label, .seat-legend, .summary-copy > span,
+.summary-copy small, .summary-note, .details-card label, .checkout-footnote,
+.schema-live-stats small, .schema-table-rail-head span,
+.schema-table-index button small, .schema-detail-column-list small,
+.schema-detail-relations > button > span, .schema-detail-relations > button > small,
+.schema-detail-flow > button small, .schema-detail-flow > strong small,
+.recent-booking > div > span, .recent-booking > div > small,
+.database-table-list button small, .database-column-strip small,
+.redaction-note, .redacted-value, .erd-help, .movie-review-row small,
+.movie-review-normalized, .movie-review-no-link { color: #625d5e; }
+.database-record-grid th { font-size: 10px; }
+.database-column-strip b, .erd-column-constraints { font-size: 8px; }
+.erd-group-label { font-size: 10px; }
+.erd-table-name, .erd-column-name { font-size: 11px; }
+.erd-table-count, .erd-column-type, .erd-more-columns { font-size: 10px; }
+
 @media (max-width: 700px) {
-  .movie-card-review-lines { grid-column: 2; margin: 0 10px 5px; font-size: 9px; }
+  .movie-card-review-lines { grid-column: 2; margin: 0 10px 5px; font-size: 11px; }
   .movie-reviews-heading { align-items: flex-start; flex-direction: column; padding: 18px 16px; }
   .movie-reviews-heading h3 { font-size: 21px; }
   .movie-reviews-average { text-align: left; }
@@ -1143,4 +1184,46 @@ body, .cinema-shell, .workspace-main, .footer { background: #fff; color: #171717
   .movie-review-row a { grid-column: 2; grid-row: 2; }
   .movie-reviews-empty, .movie-reviews-loading { padding: 16px; }
   .movie-reviews-foot { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
+}
+
+/* Final narrow-screen layout pass for the shared workspace and ERD pages. */
+@media (max-width: 700px) {
+  html, body { max-width: 100%; overflow-x: clip; }
+  .cinema-shell, .workspace-main, .schema-page-content, .database-page-content { min-width: 0; }
+  .workspace-layout { grid-template-columns: minmax(0, 1fr); }
+  .workspace-sidebar { min-width: 0; }
+  .side-nav { overscroll-behavior-inline: contain; }
+  .side-nav-link { min-height: 46px; font-size: 11px; }
+  .dashboard-brief { grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 38px 18px; }
+  .journey-path { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .journey-node { min-height: 74px; padding: 12px 24px 12px 0; }
+  .journey-node svg { right: 6px; }
+  .live-overview { padding: 20px 0 0; }
+  .schema-workspace-layout { min-height: 0; }
+  .schema-table-index button { flex-basis: 160px; min-height: 54px; }
+  .schema-controls { gap: 10px; }
+  .schema-zoom-controls { gap: 7px; }
+  .schema-zoom-controls button { min-height: 40px; padding: 0 11px; }
+  .erd-canvas { width: 100%; height: min(68svh, 640px); min-height: 440px; max-height: none; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .erd-canvas svg { max-width: none; }
+  .erd-help { right: 8px; bottom: 8px; max-width: calc(100% - 16px); line-height: 1.4; letter-spacing: .04em; }
+  .schema-detail-panel, .schema-cross-links { min-width: 0; }
+  .schema-detail-column-list { overflow-x: auto; }
+  .database-table-view { overflow: hidden; }
+  .database-table-heading { align-items: flex-start; flex-wrap: wrap; }
+  .database-pagination { align-items: flex-start; flex-direction: column; }
+  .database-pagination > div { flex-wrap: wrap; }
+  .database-query-line { align-items: flex-start; flex-direction: column; padding: 8px 10px; }
+  .database-query-line code { overflow-wrap: anywhere; }
+  .footer { min-height: 72px; flex-wrap: wrap; gap: 12px; padding: 14px 16px; }
+}
+
+@media (max-width: 400px) {
+  .topbar { padding-left: 12px; padding-right: 12px; }
+  .brand-type { font-size: 18px; }
+  .top-nav { gap: 12px; }
+  .schema-live-stats { column-gap: 6px; }
+  .schema-zoom-controls button { padding: 0 8px; }
+  .cinema-shell-home .cinema-movie-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 10px; }
+  .cinema-shell-home .cinema-movie-card .movie-card-info h3 { font-size: 14px; }
 }

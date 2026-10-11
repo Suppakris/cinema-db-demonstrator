@@ -228,6 +228,10 @@ export function SchemaWorkspace() {
     canvas.scrollTo({ left: 0, top: 0 });
   }, [height, width]);
   useEffect(() => {
+    if (!schema || window.matchMedia("(max-width: 700px)").matches) return;
+    fitCanvas();
+  }, [schema, fitCanvas]);
+  useEffect(() => {
     if (!fitMode) return;
     fitCanvas();
   }, [fitMode, fitCanvas]);

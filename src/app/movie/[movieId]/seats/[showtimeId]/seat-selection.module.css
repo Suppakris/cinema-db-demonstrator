@@ -97,3 +97,21 @@
   .seatButton { flex-basis: 31px; width: 31px; height: 30px; }
   .chairBack { left: 5px; right: 5px; height: 15px; }
 }
+
+@media (max-width: 560px) {
+  .page { padding: 0 14px; }
+  .heading { padding: 30px 0 20px; }
+  .heading h1 { font-size: clamp(36px, 11vw, 48px); overflow-wrap: anywhere; }
+  .heading p { font-size: 11px; }
+  .panelTopline { align-items: flex-start; flex-direction: column; gap: 5px; padding: 12px; }
+  .insight { margin: 13px 12px; line-height: 1.55; }
+  .seatViewport { overscroll-behavior-inline: contain; -webkit-overflow-scrolling: touch; }
+  .seatMap { align-items: flex-start; }
+  .legend { justify-content: flex-start; gap: 10px 14px; padding-inline: 10px; }
+  .summary { padding: 15px; }
+  .checkout { padding: 20px 15px; }
+  .checkoutForm { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .checkoutForm label, .checkoutTotal, .checkoutError, .checkoutForm .continue, .cancel { grid-column: 1; }
+  .footer { align-items: flex-start; flex-direction: column; justify-content: center; padding: 12px 0; }
+  .footer > span { max-width: none; text-align: left; }
+}

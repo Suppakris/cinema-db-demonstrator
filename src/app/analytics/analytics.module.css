@@ -49,4 +49,24 @@
 .queryPanel pre { overflow-x:auto; background:#202a24; color:#e8e7dc; padding:20px; margin:20px 0 0; font:12px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre; }
 .message { color:var(--muted); padding:30px 0; }
 @media(max-width:900px) { .grid { grid-template-columns:1fr; } }
-@media(max-width:640px) { .page { padding:36px 6vw 60px; } .intro { align-items:flex-start; } .summary { display:none; } .tabs button { padding-left:14px; padding-right:14px; } .heading { align-items:flex-start; } .heading h2 { font-size:30px; } .panel { padding:18px; } .panelHead h3 { font-size:21px; } }
+@media(max-width:640px) {
+  .page { padding:28px 16px 48px; }
+  .intro { align-items:flex-start; flex-direction:column; gap:15px; padding-bottom:24px; }
+  .intro h1 { font-size:clamp(44px, 12vw, 60px); }
+  .summary { min-width:0; display:grid; grid-template-columns:auto auto auto; align-items:baseline; gap:8px 12px; padding:10px 0 0; border-left:0; border-top:1px solid var(--line); }
+  .tabs button { min-height:46px; padding:12px 14px; }
+  .heading { align-items:flex-start; flex-direction:column; gap:10px; padding:26px 0 19px; }
+  .heading h2 { font-size:30px; }
+  .rowCount { padding:0; }
+  .panel { padding:15px; }
+  .panelHead { gap:8px; }
+  .panelHead h3 { font-size:20px; }
+  .panelHead>span { max-width:90px; overflow-wrap:anywhere; font-size:9px; }
+  .lineChart { overflow-x:auto; overscroll-behavior-inline:contain; }
+  .lineChart svg { width:100%; min-width:520px; }
+  .metricToggle { flex-wrap:wrap; }
+  .metricToggle button { min-height:42px; }
+  .movieSelect { align-items:flex-start; flex-direction:column; gap:8px; font-size:11px; }
+  .movieSelect select { width:100%; }
+  .queryPanel pre { max-width:100%; padding:14px; font-size:11px; }
+}
