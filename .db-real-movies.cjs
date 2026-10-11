@@ -25,6 +25,21 @@ const movies = [
   { id: 7, title: "How to Make Millions Before Grandma Dies", date: "2024-04-04", duration: 125, rating: "TV-PG", poster: "https://resizing.flixster.com/n2K60ncZxHrAskp83Y2CPp5Z1hE%3D/68x102/v2/https%3A//resizing.flixster.com/n4s66mb-CWrud-4WOKqxAS_6V4U%3D/ems.cHJkLWVtcy1hc3NldHMvbW92aWVzLzBkM2U1YmUwLTQxYmItNDU5OS05MWViLTE2YTU2MDQzZjYzNS5qcGc%3D", imdb: "7.9", rt: "98%", imdbUrl: "https://www.imdb.com/title/tt31392609/", rtUrl: "https://www.rottentomatoes.com/m/how_to_make_millions_before_grandma_dies" },
 ];
 
+const catalogDetails = [
+  { id: 1, synopsis: "Paul Atreides joins Chani and the Fremen while seeking revenge against those who destroyed his family.", genres: ["Science Fiction", "Adventure", "Action"], credits: [["Denis Villeneuve", "Director", ""], ["Timothée Chalamet", "Actor", "Paul Atreides"], ["Zendaya", "Actor", "Chani"]], studios: [["Legendary Pictures", "United States"]] },
+  { id: 2, synopsis: "Physicist J. Robert Oppenheimer leads the Manhattan Project and faces the consequences of creating the atomic bomb.", genres: ["Drama", "History"], credits: [["Christopher Nolan", "Director", ""], ["Cillian Murphy", "Actor", "J. Robert Oppenheimer"], ["Emily Blunt", "Actor", "Kitty Oppenheimer"]], studios: [["Universal Pictures", "United States"], ["Syncopy", "United Kingdom"]] },
+  { id: 3, synopsis: "After an existential crisis, Barbie leaves Barbieland with Ken and discovers the joys and difficulties of the real world.", genres: ["Comedy", "Adventure", "Fantasy"], credits: [["Greta Gerwig", "Director", ""], ["Margot Robbie", "Actor", "Barbie"], ["Ryan Gosling", "Actor", "Ken"]], studios: [["Warner Bros. Pictures", "United States"], ["Heyday Films", "United Kingdom"], ["LuckyChap Entertainment", "United States"], ["Mattel Films", "United States"]] },
+  { id: 4, synopsis: "Miles Morales crosses the multiverse and faces a conflict that puts the people he loves at risk.", genres: ["Animation", "Action", "Adventure", "Science Fiction"], credits: [["Joaquim Dos Santos", "Director", ""], ["Kemp Powers", "Director", ""], ["Justin K. Thompson", "Director", ""], ["Shameik Moore", "Actor", "Miles Morales (voice)"], ["Hailee Steinfeld", "Actor", "Gwen Stacy (voice)"]], studios: [["Columbia Pictures", "United States"], ["Sony Pictures Animation", "United States"], ["Marvel Entertainment", "United States"], ["Pascal Pictures", "United States"]] },
+  { id: 5, synopsis: "In postwar Japan, survivors face a new devastation when Godzilla emerges from the ruins.", genres: ["Science Fiction", "Horror", "Action"], credits: [["Takashi Yamazaki", "Director", ""], ["Ryunosuke Kamiki", "Actor", "Koichi Shikishima"], ["Minami Hamabe", "Actor", "Noriko Oishi"]], studios: [["Toho Studios", "Japan"], ["ROBOT Communications", "Japan"]] },
+  { id: 6, synopsis: "After decades of service, Maverick trains a new group of pilots for a dangerous mission and confronts his past.", genres: ["Action", "Drama"], credits: [["Joseph Kosinski", "Director", ""], ["Tom Cruise", "Actor", "Capt. Pete 'Maverick' Mitchell"], ["Miles Teller", "Actor", "Lt. Bradley 'Rooster' Bradshaw"]], studios: [["Paramount Pictures", "United States"], ["Skydance Media", "United States"], ["TC Productions", "United States"], ["Jerry Bruckheimer Films", "United States"]] },
+  { id: 7, synopsis: "A young man cares for his terminally ill grandmother while hoping to inherit her fortune.", genres: ["Drama", "Family"], credits: [["Pat Boonnitipat", "Director", ""], ["Putthipong Assaratanakul", "Actor", "M"], ["Usha Seamkhum", "Actor", "Amah"]], studios: [["GDH 559", "Thailand"]] },
+];
+
+function splitPersonName(fullName) {
+  const parts = fullName.trim().split(/\s+/);
+  return [parts.shift(), parts.join(" ")];
+}
+
 async function main(options = {}) {
   const isProduction = options.productionTarget ?? productionTarget;
   const apply = options.apply ?? process.argv.includes("--apply");
@@ -55,15 +70,39 @@ async function main(options = {}) {
       const [rows] = await db.query(
         "SELECT m.Movie_ID AS id, m.Title AS title, m.Poster_Image AS posterImage, m.Original_Release_Date AS releaseDate, m.Movie_Duration AS runtime, s.Source_Code AS source, r.Raw_Score AS score, r.Source_URL AS sourceUrl, r.Updated_At AS updatedAt FROM movie m JOIN movie_review r ON r.Movie_ID=m.Movie_ID JOIN review_source s ON s.Source_ID=r.Source_ID WHERE m.Movie_ID BETWEEN 1 AND 7 ORDER BY m.Movie_ID, s.Source_Code",
       );
+      const [catalogRows] = await db.query(
+        `SELECT m.Movie_ID AS id, m.Title AS title, m.Movie_Synopsis AS synopsis,
+                COUNT(DISTINCT mgd.Genre_ID) AS genreCount,
+                SUM(DISTINCT CASE WHEN g.Genre_Name LIKE 'Demo Genre %' THEN 1 ELSE 0 END) AS demoGenreCount,
+                COUNT(DISTINCT CASE WHEN mpr.Role_Type='Director' THEN mpr.Person_ID END) AS directorCount,
+                COUNT(DISTINCT CASE WHEN mpr.Role_Type='Actor' THEN mpr.Person_ID END) AS actorCount,
+                GROUP_CONCAT(DISTINCT CONCAT(CONCAT_WS(' ', p.First_Name, NULLIF(p.Last_Name,'')), ' — ', mpr.Role_Type) ORDER BY mpr.Role_Type, p.Last_Name SEPARATOR ', ') AS credits,
+                COUNT(DISTINCT ms.Studio_ID) AS studioCount,
+                GROUP_CONCAT(DISTINCT st.Studio_Name ORDER BY st.Studio_Name SEPARATOR ', ') AS studios,
+                MAX(CASE WHEN rel.Release_Edition='ORIGINAL' AND rel.Release_Date=m.Original_Release_Date THEN 1 ELSE 0 END) AS hasOriginalRelease
+         FROM movie m
+         LEFT JOIN movie_genre_details mgd ON mgd.Movie_ID=m.Movie_ID
+         LEFT JOIN genre g ON g.Genre_ID=mgd.Genre_ID
+         LEFT JOIN movie_person_role mpr ON mpr.Movie_ID=m.Movie_ID
+         LEFT JOIN person p ON p.Person_ID=mpr.Person_ID
+         LEFT JOIN movie_studio ms ON ms.Movie_ID=m.Movie_ID
+         LEFT JOIN studio st ON st.Studio_ID=ms.Studio_ID
+         LEFT JOIN movie_release rel ON rel.Movie_ID=m.Movie_ID
+         WHERE m.Movie_ID BETWEEN 1 AND 7 GROUP BY m.Movie_ID ORDER BY m.Movie_ID`,
+      );
       const [[totals]] = await db.query("SELECT COUNT(*) AS totalMovies, SUM(Title LIKE 'Demo Movie %') AS remainingPlaceholders FROM movie");
       await db.rollback();
       if (rows.length !== 14 || rows.some((row) => !row.sourceUrl || !row.posterImage)) throw new Error("Expected seven movies with posters and fourteen source-linked review snapshots.");
-      const audit = { database: dbInfo.dbName, totalMovies: Number(totals.totalMovies), remainingPlaceholders: Number(totals.remainingPlaceholders), realFilmReviewRows: rows };
+      if (catalogRows.length !== 7 || catalogRows.some((row) => !row.synopsis || row.synopsis.startsWith("Demonstration movie synopsis") || Number(row.genreCount) < 2 || Number(row.demoGenreCount) > 0 || Number(row.directorCount) < 1 || Number(row.actorCount) < 2 || Number(row.studioCount) < 1 || Number(row.hasOriginalRelease) !== 1)) {
+        throw new Error("One or more of the seven named films still has incomplete or demo linked catalog data.");
+      }
+      const audit = { database: dbInfo.dbName, totalMovies: Number(totals.totalMovies), remainingPlaceholders: Number(totals.remainingPlaceholders), realFilmCatalogRows: catalogRows, realFilmReviewRows: rows };
       if (!silent) console.log(JSON.stringify(audit, null, 2));
       return audit;
     }
 
     for (const movie of movies) {
+      const details = catalogDetails.find((item) => item.id === movie.id);
       const [[current]] = await db.execute("SELECT Title AS title FROM movie WHERE Movie_ID=?", [movie.id]);
       if (!current || (current.title !== `Demo Movie ${String(movie.id).padStart(2, "0")}` && !(refresh && current.title === movie.title))) {
         throw new Error(`Movie ${movie.id} is not the expected demo placeholder; refusing to overwrite.`);
@@ -71,16 +110,54 @@ async function main(options = {}) {
       const [[reviewCount]] = await db.execute("SELECT COUNT(*) AS n FROM movie_review WHERE Movie_ID=? AND Source_ID IN (?,?)", [movie.id, imdbId, rtId]);
       if (Number(reviewCount.n) !== 2) throw new Error(`Movie ${movie.id} must have exactly two review rows.`);
       if (apply) {
-        await db.execute("UPDATE movie SET Title=?, Original_Release_Date=?, Movie_Duration=?, Age_Rating=?, Poster_Image=? WHERE Movie_ID=?", [movie.title, movie.date, movie.duration, movie.rating, movie.poster, movie.id]);
+        await db.execute("UPDATE movie SET Title=?, Original_Release_Date=?, Movie_Duration=?, Age_Rating=?, Poster_Image=?, Movie_Synopsis=? WHERE Movie_ID=?", [movie.title, movie.date, movie.duration, movie.rating, movie.poster, details.synopsis, movie.id]);
         await db.execute("UPDATE movie_review SET Raw_Score=?, Normalized_Score=?, Source_URL=?, Updated_At=UTC_TIMESTAMP() WHERE Movie_ID=? AND Source_ID=?", [movie.imdb, Number(movie.imdb) * 10, movie.imdbUrl, movie.id, imdbId]);
         await db.execute("UPDATE movie_review SET Raw_Score=?, Normalized_Score=?, Source_URL=?, Updated_At=UTC_TIMESTAMP() WHERE Movie_ID=? AND Source_ID=?", [movie.rt, Number.parseInt(movie.rt, 10), movie.rtUrl, movie.id, rtId]);
+
+        await db.execute("DELETE FROM movie_genre_details WHERE Movie_ID=?", [movie.id]);
+        for (const genreName of details.genres) {
+          const [[genre]] = await db.execute("SELECT Genre_ID AS id FROM genre WHERE Genre_Name=? ORDER BY Genre_ID LIMIT 1", [genreName]);
+          const [inserted] = genre ? [null] : await db.execute("INSERT INTO genre (Genre_Name) VALUES (?)", [genreName]);
+          const genreId = genre ? Number(genre.id) : inserted.insertId;
+          await db.execute("INSERT INTO movie_genre_details (Movie_ID, Genre_ID) VALUES (?,?)", [movie.id, genreId]);
+        }
+
+        await db.execute("DELETE FROM movie_person_role WHERE Movie_ID=?", [movie.id]);
+        for (const [fullName, role, character] of details.credits) {
+          const [firstName, lastName] = splitPersonName(fullName);
+          const [[person]] = await db.execute("SELECT Person_ID AS id FROM person WHERE First_Name=? AND Last_Name=? ORDER BY Person_ID LIMIT 1", [firstName, lastName]);
+          const [inserted] = person ? [null] : await db.execute("INSERT INTO person (First_Name, Last_Name) VALUES (?,?)", [firstName, lastName]);
+          const personId = person ? Number(person.id) : inserted.insertId;
+          await db.execute("INSERT INTO movie_person_role (Movie_ID, Person_ID, Role_Type, Character_Name) VALUES (?,?,?,?)", [movie.id, personId, role, character]);
+        }
+        for (const [fullName] of details.credits) {
+          const [firstName, lastName] = splitPersonName(fullName);
+          if (!lastName) await db.execute("DELETE FROM person WHERE First_Name=? AND Last_Name='-' AND NOT EXISTS (SELECT 1 FROM movie_person_role WHERE movie_person_role.Person_ID=person.Person_ID)", [firstName]);
+        }
+
+        await db.execute("DELETE FROM movie_studio WHERE Movie_ID=?", [movie.id]);
+        for (const [studioName, country] of details.studios) {
+          const [[studio]] = await db.execute("SELECT Studio_ID AS id FROM studio WHERE Studio_Name=? ORDER BY Studio_ID LIMIT 1", [studioName]);
+          const [inserted] = studio ? [null] : await db.execute("INSERT INTO studio (Studio_Name, Studio_Country) VALUES (?,?)", [studioName, country]);
+          const studioId = studio ? Number(studio.id) : inserted.insertId;
+          if (studio) await db.execute("UPDATE studio SET Studio_Country=? WHERE Studio_ID=?", [country, studioId]);
+          await db.execute("INSERT INTO movie_studio (Movie_ID, Studio_ID) VALUES (?,?)", [movie.id, studioId]);
+        }
+
+        const [[demoRelease]] = await db.execute("SELECT Release_ID AS id FROM movie_release WHERE Movie_ID=? AND Release_Note='Demo release record' ORDER BY Release_ID LIMIT 1", [movie.id]);
+        if (demoRelease) {
+          await db.execute("UPDATE movie_release SET Release_Date=?, Release_Edition='ORIGINAL', Release_Note='Original theatrical release' WHERE Release_ID=?", [movie.date, demoRelease.id]);
+        } else {
+          const [[release]] = await db.execute("SELECT Release_ID AS id FROM movie_release WHERE Movie_ID=? AND Release_Date=? AND Release_Edition='ORIGINAL' LIMIT 1", [movie.id, movie.date]);
+          if (!release) await db.execute("INSERT INTO movie_release (Movie_ID, Release_Date, Release_Edition, Release_Note) VALUES (?,?,'ORIGINAL','Original theatrical release')", [movie.id, movie.date]);
+        }
       }
     }
     const [preview] = await db.query("SELECT Movie_ID AS id, Title AS title FROM movie WHERE Movie_ID BETWEEN 1 AND 7 ORDER BY Movie_ID");
     if (apply) await db.commit(); else await db.rollback();
-    const result = { database: dbInfo.dbName, mode: apply ? "APPLY" : "DRY RUN (ROLLBACK)", films: preview };
+    const result = { database: dbInfo.dbName, mode: apply ? "APPLY" : "DRY RUN (ROLLBACK)", films: preview, seededTables: ["movie", "movie_release", "genre", "movie_genre_details", "person", "movie_person_role", "studio", "movie_studio", "movie_review"] };
     if (!silent) {
-      console.log(`${apply ? "Applied" : "Dry run; rolled back"} ${movies.length} real film records on the ${isProduction ? "production" : "local"} database.`);
+      console.log(`${apply ? "Applied" : "Dry run; rolled back"} ${movies.length} real film catalog records and their linked data on the ${isProduction ? "production" : "local"} database.`);
       console.log(preview.map((m) => `${m.id}: ${m.title}`).join("\n"));
     }
     return result;

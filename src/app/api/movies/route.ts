@@ -47,7 +47,7 @@ export async function GET() {
               (SELECT GROUP_CONCAT(g.Genre_Name ORDER BY g.Genre_Name SEPARATOR ', ')
                FROM movie_genre_details mgd JOIN genre g ON g.Genre_ID = mgd.Genre_ID
                WHERE mgd.Movie_ID = m.Movie_ID) AS genres,
-              (SELECT GROUP_CONCAT(CONCAT(p.First_Name, ' ', p.Last_Name, ' — ', mpr.Role_Type)
+              (SELECT GROUP_CONCAT(CONCAT(CONCAT_WS(' ', p.First_Name, NULLIF(p.Last_Name, '')), ' — ', mpr.Role_Type)
                  ORDER BY mpr.Role_Type, p.Last_Name, p.First_Name SEPARATOR ', ')
                FROM movie_person_role mpr JOIN person p ON p.Person_ID = mpr.Person_ID
                WHERE mpr.Movie_ID = m.Movie_ID AND mpr.Role_Type IN ('Actor', 'Director')) AS credits
