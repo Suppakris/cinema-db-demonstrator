@@ -66,6 +66,7 @@ async function main(options = {}) {
     const [methods] = await db.query("SELECT Payment_Method_ID AS id FROM payment_method ORDER BY Payment_Method_ID LIMIT 1");
     const [providers] = await db.query("SELECT Provider_Account_ID AS id FROM payment_provider_account ORDER BY Provider_Account_ID LIMIT 1");
     const [existingShowtimes] = await db.query("SELECT Showtime_ID AS id, Theater_ID AS theaterId, Movie_ID AS movieId, DATE_FORMAT(Start_Time,'%Y-%m-%d %H:%i:%s') AS startTime, Showtime_Status AS status FROM showtime");
+    const [futureShowtimeCounts] = await db.query("SELECT Movie_ID AS movieId, COUNT(*) AS count FROM showtime WHERE Showtime_Status='AVAILABLE' AND Start_Time > NOW() GROUP BY Movie_ID");
     const [existingCustomers] = await db.query("SELECT Customer_ID AS id, Email AS email FROM customer WHERE Email LIKE 'analytics-demo-seed-%@example.test'");
     const [existingPayments] = await db.query("SELECT Idempotency_Key AS keyValue FROM payment WHERE Idempotency_Key LIKE 'analytics-demo-%'");
 
@@ -130,6 +131,43 @@ async function main(options = {}) {
       monthIndex++;
     }
 
+    // Keep named films bookable in the product with a small rolling schedule.
+    // Two future screenings per named film are enough for discovery without
+    // creating an unbounded calendar every time the seed is rerun.
+    const namedMovies = movies.slice(0, Math.min(7, movies.length));
+    const futureAvailableByMovie = new Map();
+    for (const row of futureShowtimeCounts) futureAvailableByMovie.set(Number(row.movieId), Number(row.count));
+    const futureSessions = [];
+    for (const movie of namedMovies) {
+      let have = futureAvailableByMovie.get(Number(movie.id)) || 0;
+      for (let dayOffset = 1; have < 2 && dayOffset <= 21; dayOffset++) {
+        const dateObject = new Date(Date.UTC(todayParts.year, todayParts.month - 1, todayParts.day + dayOffset));
+        const year = dateObject.getUTCFullYear(), month = dateObject.getUTCMonth(), day = dateObject.getUTCDate();
+        const date = sqlDate(year, month, day);
+        const weekend = [0, 6].includes(dateObject.getUTCDay());
+        const time = weekend ? "14:00" : "18:30";
+        const slotId = weekend ? weekendSlot : weekdaySlot;
+        let added = false;
+        for (let theaterOffset = 0; theaterOffset < theaters.length; theaterOffset++) {
+          const theater = theaters[(Number(movie.id) - 1 + theaterOffset) % theaters.length];
+          const seatList = seatsByTheater.get(Number(theater.id)) || [];
+          const price = priceByKey.get(`${theater.branchId}|${theater.typeId}|${standardTypeId}|${slotId}`);
+          const startTime = sqlDateTime(date, time);
+          const key = `${theater.id}|${startTime}`;
+          if (!seatList.length || !price || oldShowtimeByKey.has(key)) continue;
+          futureSessions.push({ movie, theater, seatList, price, date, time, startTime, slotId, weekend });
+          oldShowtimeByKey.set(key, { status: "AVAILABLE", movieId: movie.id, startTime });
+          have++;
+          added = true;
+          break;
+        }
+        if (!added && dayOffset === 21 && have < 2) {
+          throw new Error(`Could not find an open theater and price slot for ${movie.id} (${have}/2 future showtimes).`);
+        }
+      }
+      futureAvailableByMovie.set(Number(movie.id), have);
+    }
+
     const newCustomerEmails = [];
     for (let index = 1; index <= 64; index++) if (!existingCustomerByEmail.has(demoEmail(index))) newCustomerEmails.push(demoEmail(index));
     if (newCustomerEmails.length) {
@@ -156,22 +194,31 @@ async function main(options = {}) {
       const endTime = `${end.toISOString().slice(0, 10)} ${end.toISOString().slice(11, 19)}`;
       showtimeRows.push([session.startTime, endTime, "COMPLETED", Number(session.movie.id), Number(session.theater.id), Number(thaiLanguage.id), Number(englishLanguage.id)]);
     }
+    for (const session of futureSessions) {
+      const end = new Date(Date.parse(`${session.date}T${session.time}:00Z`) + Number(session.movie.duration) * 60000);
+      const endTime = `${end.toISOString().slice(0, 10)} ${end.toISOString().slice(11, 19)}`;
+      showtimeRows.push([session.startTime, endTime, "AVAILABLE", Number(session.movie.id), Number(session.theater.id), Number(thaiLanguage.id), Number(englishLanguage.id)]);
+    }
     if (showtimeRows.length) {
       await db.query("INSERT INTO showtime (Start_Time, End_Time, Showtime_Status, Movie_ID, Theater_ID, Audio_Language_ID, Subtitle_Language_ID) VALUES ?", [showtimeRows]);
-      const [insertedShowtimes] = await db.query("SELECT Showtime_ID AS id, Theater_ID AS theaterId, Movie_ID AS movieId, DATE_FORMAT(Start_Time,'%Y-%m-%d %H:%i:%s') AS startTime FROM showtime WHERE Showtime_Status='COMPLETED' AND Start_Time IN (?)", [sessions.filter((session) => session.showtimeId == null).map((session) => session.startTime)]);
-      const insertedByKey = new Map(insertedShowtimes.map((row) => [`${row.theaterId}|${row.startTime}`, Number(row.id)]));
-      for (const session of sessions) if (session.showtimeId == null) {
-        session.showtimeId = insertedByKey.get(`${session.theater.id}|${session.startTime}`);
-        if (!session.showtimeId) throw new Error(`Inserted showtime could not be read back: ${session.startTime}`);
+      const pendingHistoricalSessions = sessions.filter((session) => session.showtimeId == null);
+      if (pendingHistoricalSessions.length) {
+        const [insertedShowtimes] = await db.query("SELECT Showtime_ID AS id, Theater_ID AS theaterId, Movie_ID AS movieId, DATE_FORMAT(Start_Time,'%Y-%m-%d %H:%i:%s') AS startTime FROM showtime WHERE Showtime_Status='COMPLETED' AND Start_Time IN (?)", [pendingHistoricalSessions.map((session) => session.startTime)]);
+        const insertedByKey = new Map(insertedShowtimes.map((row) => [`${row.theaterId}|${row.startTime}`, Number(row.id)]));
+        for (const session of pendingHistoricalSessions) {
+          session.showtimeId = insertedByKey.get(`${session.theater.id}|${session.startTime}`);
+          if (!session.showtimeId) throw new Error(`Inserted showtime could not be read back: ${session.startTime}`);
+        }
       }
     }
 
     const bookingRows = [], ticketRows = [], paymentRows = [], redemptionRows = [];
     const plannedPayments = new Set(existingPaymentKeys);
+    const plannedPaymentPrefixes = new Set([...existingPaymentKeys].map((key) => key.slice(0, key.lastIndexOf("-") + 1)));
     let totalBookingMarker = 0;
     for (const session of sessions) {
       const markerPrefix = `analytics-demo-${session.marker}`;
-      if (Array.from(plannedPayments).some((key) => key.startsWith(markerPrefix))) continue;
+      if (plannedPaymentPrefixes.has(`${markerPrefix}-`)) continue;
       const sizes = Array(session.orderCount).fill(Math.floor(session.attendance / session.orderCount));
       for (let remainder = session.attendance % session.orderCount, i = 0; remainder > 0; remainder--, i = (i + 1) % sizes.length) sizes[i]++;
       let seatOffset = 0;
@@ -213,6 +260,7 @@ async function main(options = {}) {
         seatOffset += sizes[orderIndex];
         totalBookingMarker++;
       }
+      plannedPaymentPrefixes.add(`${markerPrefix}-`);
     }
 
     if (ticketRows.length > sessions.reduce((sum, session) => sum + session.seatList.length, 0)) throw new Error("Generated tickets exceed seat inventory.");
@@ -231,7 +279,7 @@ async function main(options = {}) {
       if (redemptionRows.length) await db.query("INSERT INTO member_pass_redemption (Card_ID, Movie_ID, Showtime_ID, Redeemed_At) VALUES ?", [redemptionRows]);
     }
 
-    const plan = { database: databaseRow.name, mode: applying ? "APPLY" : "DRY RUN (ROLLBACK)", generatedShowtimes: showtimeRows.length, seededCustomers: newCustomerEmails.length, newBookings: bookingRows.length, newTickets: ticketRows.length, passRedemptions: redemptionRows.length, expectedMonths: [...new Set(sessions.map((session) => session.date.slice(0, 7)))].length };
+    const plan = { database: databaseRow.name, mode: applying ? "APPLY" : "DRY RUN (ROLLBACK)", generatedShowtimes: showtimeRows.length, upcomingShowtimes: futureSessions.length, upcomingPerNamedMovie: Object.fromEntries(namedMovies.map((movie) => [movie.id, futureAvailableByMovie.get(Number(movie.id)) || 0])), seededCustomers: newCustomerEmails.length, newBookings: bookingRows.length, newTickets: ticketRows.length, passRedemptions: redemptionRows.length, expectedMonths: [...new Set(sessions.map((session) => session.date.slice(0, 7)))].length };
     if (applying) await db.commit();
     else await db.rollback();
     if (!silent) console.log(JSON.stringify(plan, null, 2));

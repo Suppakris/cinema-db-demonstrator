@@ -13,7 +13,10 @@ The latest task added the Analytics page, updated the named-film posters, and sy
 - Updated the monthly ranking and review chart queries to exclude the remaining `Demo Movie` placeholders. The booking, membership, and theater charts still use synthetic demo transactions, called out on the page.
 - Added [the analytics data audit](docs/analytics-data-audit.md), which explains the seeds and prior relationship checks.
 - Pushed commit `da9522f` to GitHub `master` and deployed the final app to Vercel. Production health reports the Aiven database connected; `/api/movies` returns all seven real titles with posters and `/api/analytics/bookings` returns seeded data.
-- The temporary authenticated production-seed route and its one-time token were removed after the Aiven update. They are not present in the final deployment.
+- The temporary authenticated production-seed route and its one-time token were removed after the Aiven update. They will not be included in the final deployment.
+- Added a rolling upcoming-showtime seed for the seven named films. It uses existing theater capacity, language, and price rows; creates only `AVAILABLE` showtimes with no bookings; and maintains at least two future screenings per named film. Applied nine new screenings to Aiven. The live `/api/movies` counts are 2, 2, 2, 2, 2, 2, and 3 in catalog order.
+- Optimized `.db-seed.cjs` marker checks to use a prefix set instead of repeatedly scanning every payment key, and made the existing-showtime readback skip an empty `IN` query. The seed plans upcoming sessions against the same `NOW()` boundary the product uses.
+- The authenticated one-time seed route and token were removed after use. The live `/api/movies` endpoint confirms the added screenings. Deploy the committed permanent seed update, then verify health and showtime counts once more.
 
 ### Current data status and constraints
 
@@ -21,7 +24,7 @@ The latest task added the Analytics page, updated the named-film posters, and sy
 - The audit found 20 pre-existing M Pass redemption rows without a matching zero-price ticket. They were not changed. The new seed creates matching tickets for its own redemptions.
 - Existing booking/ticket/payment checks passed before the real-film update. No booking, showtime, ticket, payment, or catalog relationship rows were changed by the real-film update.
 - `.db-real-movies.cjs` defaults to rollback-only preview; `--apply` writes. `--audit` prints the seven poster and source-linked film review rows. It restricts local mode to localhost and checks the expected demo placeholders. `--refresh --apply` can update the seven already named entries if corrected facts are needed.
-- `.db-seed.cjs` defaults to rollback-only preview; `--apply` writes. It is idempotent.
+- `.db-seed.cjs` defaults to rollback-only preview; `--apply` writes. It is idempotent, creates demo historical activity and maintains two upcoming `AVAILABLE` screenings for each named film, with no synthetic bookings on future sessions.
 
 ### Resume here
 
